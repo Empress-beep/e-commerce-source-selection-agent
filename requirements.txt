@@ -1,0 +1,23 @@
+# 电商货源 AI 选品 Agent · 运行依赖
+# 安装：pip install -r requirements.txt
+# 版本只写下限，保持向后兼容，不锁死高版本
+
+# ---- 采集器 ----
+requests>=2.28.0            # HTTP 请求（列表 / 详情 / 详情域接口）
+pycryptodome>=3.19.0        # AES 加解密（Crypto.Cipher.AES）
+cryptography>=39.0.0        # RSA 签名与信封加密（SHA1withRSA / PEM）
+
+# ---- 数据库 ----
+pymysql>=1.0.2              # MySQL 驱动（api_backup / product_info / product_select_result）
+
+# ---- AI 选品与 Agent ----
+dashscope>=1.20.0           # 通义千问 DashScope SDK（MultiModalConversation Function Call）
+
+# ---- 审核报表 ----
+openpyxl>=3.0.10            # 待审核 Excel 生成与导入（pending/finished audit）
+
+# ---- 配置 ----
+python-dotenv>=1.0.0        # 读取 config/.env 环境变量（src/settings.py::load_env）
+
+# ---- 测试（开发依赖）----
+pytest>=7.0.0               # python -m pytest tests -q

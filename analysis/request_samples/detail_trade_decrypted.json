@@ -1,0 +1,722 @@
+{
+  "Result": {
+    "Items": [
+      {
+        "ProductRate": {
+          "TradeId": 13446512,
+          "OrderId": 0,
+          "ProductId": 4476128,
+          "UserId": 1707742,
+          "RateContent": "此用户未填写评价内容",
+          "ProductQualityScore": 5,
+          "BuyTime": "2026-09-20 01:51:18",
+          "ParentRateId": 0,
+          "Photos": null,
+          "IsPhoto": false,
+          "CreationTime": "0001-01-01 00:00:00",
+          "IsDeleted": false,
+          "DeletionTime": null,
+          "AuditStatus": 0,
+          "IsAutoPost": false,
+          "UserName": "175***",
+          "HeadImg": "https://thirdwx.qlogo.cn/mmopen/vi_32/POgEwh4mIHO4nibH0KlMECNjjGxQUq24ZEaGT4poC6icRiccVGKSyXwibcPq4BWmiaIGuG1icwxaQX6grC9VemZoJ8rg/132",
+          "SkuPropertyName": null,
+          "Id": 0
+        },
+        "TradeId": 13446512,
+        "UserId": 1707742,
+        "UserName": "175***",
+        "UserHeadImg": "https://thirdwx.qlogo.cn/mmopen/vi_32/POgEwh4mIHO4nibH0KlMECNjjGxQUq24ZEaGT4poC6icRiccVGKSyXwibcPq4BWmiaIGuG1icwxaQX6grC9VemZoJ8rg/132",
+        "Quantity": 1.0,
+        "CreationTime": "2026-09-20 01:51:18",
+        "TradeItems": [
+          {
+            "SkuId": 110236146,
+            "SkuPropNames": "颜色分类:黑色;尺码:41",
+            "Quantity": 1,
+            "OnePrice": 47.04
+          }
+        ]
+      },
+      {
+        "ProductRate": {
+          "TradeId": 13377826,
+          "OrderId": 0,
+          "ProductId": 4476128,
+          "UserId": 1704156,
+          "RateContent": "此用户未填写评价内容",
+          "ProductQualityScore": 5,
+          "BuyTime": "2026-09-05 23:19:42",
+          "ParentRateId": 0,
+          "Photos": null,
+          "IsPhoto": false,
+          "CreationTime": "0001-01-01 00:00:00",
+          "IsDeleted": false,
+          "DeletionTime": null,
+          "AuditStatus": 0,
+          "IsAutoPost": false,
+          "UserName": "138***",
+          "HeadImg": "https://thirdwx.qlogo.cn/mmopen/vi_32/POgEwh4mIHO4nibH0KlMECNjjGxQUq24ZEaGT4poC6icRiccVGKSyXwibcPq4BWmiaIGuG1icwxaQX6grC9VemZoJ8rg/132",
+          "SkuPropertyName": null,
+          "Id": 0
+        },
+        "TradeId": 13377826,
+        "UserId": 1704156,
+        "UserName": "138***",
+        "UserHeadImg": "https://thirdwx.qlogo.cn/mmopen/vi_32/POgEwh4mIHO4nibH0KlMECNjjGxQUq24ZEaGT4poC6icRiccVGKSyXwibcPq4BWmiaIGuG1icwxaQX6grC9VemZoJ8rg/132",
+        "Quantity": 1.0,
+        "CreationTime": "2026-09-05 23:19:42",
+        "TradeItems": [
+          {
+            "SkuId": 110236146,
+            "SkuPropNames": "颜色分类:黑色;尺码:41",
+            "Quantity": 1,
+            "OnePrice": 47.04
+          }
+        ]
+      },
+      {
+        "ProductRate": {
+          "TradeId": 13050274,
+          "OrderId": 0,
+          "ProductId": 4476128,
+          "UserId": 665991,
+          "RateContent": "此用户未填写评价内容",
+          "ProductQualityScore": 5,
+          "BuyTime": "2026-06-18 09:21:13",
+          "ParentRateId": 0,
+          "Photos": null,
+          "IsPhoto": false,
+          "CreationTime": "0001-01-01 00:00:00",
+          "IsDeleted": false,
+          "DeletionTime": null,
+          "AuditStatus": 0,
+          "IsAutoPost": false,
+          "UserName": "156***",
+          "HeadImg": "https://thirdwx.qlogo.cn/mmopen/vi_32/Gjrfiady2psX2SQreCibGILFRHlTFicrETK3UtFdW2tdL3VqS097rp8QynU0Q2p3jqxlib5jjia9aPPA6YvyvlGOgog/132",
+          "SkuPropertyName": null,
+          "Id": 0
+        },
+        "TradeId": 13050274,
+        "UserId": 665991,
+        "UserName": "156***",
+        "UserHeadImg": "https://thirdwx.qlogo.cn/mmopen/vi_32/Gjrfiady2psX2SQreCibGILFRHlTFicrETK3UtFdW2tdL3VqS097rp8QynU0Q2p3jqxlib5jjia9aPPA6YvyvlGOgog/132",
+        "Quantity": 1.0,
+        "CreationTime": "2026-06-18 09:21:13",
+        "TradeItems": [
+          {
+            "SkuId": 110236141,
+            "SkuPropNames": "颜色分类:白色;尺码:42",
+            "Quantity": 1,
+            "OnePrice": 48.0
+          }
+        ]
+      },
+      {
+        "ProductRate": {
+          "TradeId": 12990143,
+          "OrderId": 0,
+          "ProductId": 4476128,
+          "UserId": 1659573,
+          "RateContent": "此用户未填写评价内容",
+          "ProductQualityScore": 5,
+          "BuyTime": "2026-06-05 11:59:56",
+          "ParentRateId": 0,
+          "Photos": null,
+          "IsPhoto": false,
+          "CreationTime": "0001-01-01 00:00:00",
+          "IsDeleted": false,
+          "DeletionTime": null,
+          "AuditStatus": 0,
+          "IsAutoPost": false,
+          "UserName": "195***",
+          "HeadImg": "https://thirdwx.qlogo.cn/mmopen/vi_32/POgEwh4mIHO4nibH0KlMECNjjGxQUq24ZEaGT4poC6icRiccVGKSyXwibcPq4BWmiaIGuG1icwxaQX6grC9VemZoJ8rg/132",
+          "SkuPropertyName": null,
+          "Id": 0
+        },
+        "TradeId": 12990143,
+        "UserId": 1659573,
+        "UserName": "195***",
+        "UserHeadImg": "https://thirdwx.qlogo.cn/mmopen/vi_32/POgEwh4mIHO4nibH0KlMECNjjGxQUq24ZEaGT4poC6icRiccVGKSyXwibcPq4BWmiaIGuG1icwxaQX6grC9VemZoJ8rg/132",
+        "Quantity": 1.0,
+        "CreationTime": "2026-06-05 11:59:56",
+        "TradeItems": [
+          {
+            "SkuId": 110236141,
+            "SkuPropNames": "颜色分类:白色;尺码:42",
+            "Quantity": 1,
+            "OnePrice": 47.04
+          }
+        ]
+      },
+      {
+        "ProductRate": {
+          "TradeId": 12970096,
+          "OrderId": 0,
+          "ProductId": 4476128,
+          "UserId": 161185,
+          "RateContent": "此用户未填写评价内容",
+          "ProductQualityScore": 5,
+          "BuyTime": "2026-06-01 15:30:31",
+          "ParentRateId": 0,
+          "Photos": null,
+          "IsPhoto": false,
+          "CreationTime": "0001-01-01 00:00:00",
+          "IsDeleted": false,
+          "DeletionTime": null,
+          "AuditStatus": 0,
+          "IsAutoPost": false,
+          "UserName": "173***",
+          "HeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+          "SkuPropertyName": null,
+          "Id": 0
+        },
+        "TradeId": 12970096,
+        "UserId": 161185,
+        "UserName": "173***",
+        "UserHeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+        "Quantity": 1.0,
+        "CreationTime": "2026-06-01 15:30:31",
+        "TradeItems": [
+          {
+            "SkuId": 110236148,
+            "SkuPropNames": "颜色分类:黑色;尺码:43",
+            "Quantity": 1,
+            "OnePrice": 48.0
+          }
+        ]
+      },
+      {
+        "ProductRate": {
+          "TradeId": 12919416,
+          "OrderId": 0,
+          "ProductId": 4476128,
+          "UserId": 1026377,
+          "RateContent": "此用户未填写评价内容",
+          "ProductQualityScore": 5,
+          "BuyTime": "2026-05-23 15:31:00",
+          "ParentRateId": 0,
+          "Photos": null,
+          "IsPhoto": false,
+          "CreationTime": "0001-01-01 00:00:00",
+          "IsDeleted": false,
+          "DeletionTime": null,
+          "AuditStatus": 0,
+          "IsAutoPost": false,
+          "UserName": "173***",
+          "HeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+          "SkuPropertyName": null,
+          "Id": 0
+        },
+        "TradeId": 12919416,
+        "UserId": 1026377,
+        "UserName": "173***",
+        "UserHeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+        "Quantity": 1.0,
+        "CreationTime": "2026-05-23 15:31:00",
+        "TradeItems": [
+          {
+            "SkuId": 110236146,
+            "SkuPropNames": "颜色分类:黑色;尺码:41",
+            "Quantity": 1,
+            "OnePrice": 48.0
+          }
+        ]
+      },
+      {
+        "ProductRate": {
+          "TradeId": 12566270,
+          "OrderId": 0,
+          "ProductId": 4476128,
+          "UserId": 1537783,
+          "RateContent": "此用户未填写评价内容",
+          "ProductQualityScore": 5,
+          "BuyTime": "2026-03-23 17:02:03",
+          "ParentRateId": 0,
+          "Photos": null,
+          "IsPhoto": false,
+          "CreationTime": "0001-01-01 00:00:00",
+          "IsDeleted": false,
+          "DeletionTime": null,
+          "AuditStatus": 0,
+          "IsAutoPost": false,
+          "UserName": "199***",
+          "HeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+          "SkuPropertyName": null,
+          "Id": 0
+        },
+        "TradeId": 12566270,
+        "UserId": 1537783,
+        "UserName": "199***",
+        "UserHeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+        "Quantity": 1.0,
+        "CreationTime": "2026-03-23 17:02:03",
+        "TradeItems": [
+          {
+            "SkuId": 110236151,
+            "SkuPropNames": "颜色分类:卡其;尺码:40",
+            "Quantity": 1,
+            "OnePrice": 48.0
+          }
+        ]
+      },
+      {
+        "ProductRate": {
+          "TradeId": 12330244,
+          "OrderId": 0,
+          "ProductId": 4476128,
+          "UserId": 1356896,
+          "RateContent": "此用户未填写评价内容",
+          "ProductQualityScore": 5,
+          "BuyTime": "2026-01-28 20:44:38",
+          "ParentRateId": 0,
+          "Photos": null,
+          "IsPhoto": false,
+          "CreationTime": "0001-01-01 00:00:00",
+          "IsDeleted": false,
+          "DeletionTime": null,
+          "AuditStatus": 0,
+          "IsAutoPost": false,
+          "UserName": "131***",
+          "HeadImg": "https://thirdwx.qlogo.cn/mmopen/vi_32/POgEwh4mIHO4nibH0KlMECNjjGxQUq24ZEaGT4poC6icRiccVGKSyXwibcPq4BWmiaIGuG1icwxaQX6grC9VemZoJ8rg/132",
+          "SkuPropertyName": null,
+          "Id": 0
+        },
+        "TradeId": 12330244,
+        "UserId": 1356896,
+        "UserName": "131***",
+        "UserHeadImg": "https://thirdwx.qlogo.cn/mmopen/vi_32/POgEwh4mIHO4nibH0KlMECNjjGxQUq24ZEaGT4poC6icRiccVGKSyXwibcPq4BWmiaIGuG1icwxaQX6grC9VemZoJ8rg/132",
+        "Quantity": 1.0,
+        "CreationTime": "2026-01-28 20:44:38",
+        "TradeItems": [
+          {
+            "SkuId": 110236143,
+            "SkuPropNames": "颜色分类:白色;尺码:44",
+            "Quantity": 1,
+            "OnePrice": 48.0
+          }
+        ]
+      },
+      {
+        "ProductRate": {
+          "TradeId": 12293464,
+          "OrderId": 0,
+          "ProductId": 4476128,
+          "UserId": 1586473,
+          "RateContent": "此用户未填写评价内容",
+          "ProductQualityScore": 5,
+          "BuyTime": "2026-01-23 17:48:26",
+          "ParentRateId": 0,
+          "Photos": null,
+          "IsPhoto": false,
+          "CreationTime": "0001-01-01 00:00:00",
+          "IsDeleted": false,
+          "DeletionTime": null,
+          "AuditStatus": 0,
+          "IsAutoPost": false,
+          "UserName": "137***",
+          "HeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+          "SkuPropertyName": null,
+          "Id": 0
+        },
+        "TradeId": 12293464,
+        "UserId": 1586473,
+        "UserName": "137***",
+        "UserHeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+        "Quantity": 1.0,
+        "CreationTime": "2026-01-23 17:48:26",
+        "TradeItems": [
+          {
+            "SkuId": 110236145,
+            "SkuPropNames": "颜色分类:黑色;尺码:40",
+            "Quantity": 1,
+            "OnePrice": 47.04
+          }
+        ]
+      },
+      {
+        "ProductRate": {
+          "TradeId": 11748285,
+          "OrderId": 0,
+          "ProductId": 4476128,
+          "UserId": 1452669,
+          "RateContent": "此用户未填写评价内容",
+          "ProductQualityScore": 5,
+          "BuyTime": "2025-11-07 16:52:28",
+          "ParentRateId": 0,
+          "Photos": null,
+          "IsPhoto": false,
+          "CreationTime": "0001-01-01 00:00:00",
+          "IsDeleted": false,
+          "DeletionTime": null,
+          "AuditStatus": 0,
+          "IsAutoPost": false,
+          "UserName": "152***",
+          "HeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+          "SkuPropertyName": null,
+          "Id": 0
+        },
+        "TradeId": 11748285,
+        "UserId": 1452669,
+        "UserName": "152***",
+        "UserHeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+        "Quantity": 2.0,
+        "CreationTime": "2025-11-07 16:52:28",
+        "TradeItems": [
+          {
+            "SkuId": 110236142,
+            "SkuPropNames": "颜色分类:白色;尺码:43",
+            "Quantity": 1,
+            "OnePrice": 48.0
+          },
+          {
+            "SkuId": 110236138,
+            "SkuPropNames": "颜色分类:白色;尺码:39",
+            "Quantity": 1,
+            "OnePrice": 48.0
+          }
+        ]
+      },
+      {
+        "ProductRate": {
+          "TradeId": 11725240,
+          "OrderId": 0,
+          "ProductId": 4476128,
+          "UserId": 1518665,
+          "RateContent": "此用户未填写评价内容",
+          "ProductQualityScore": 5,
+          "BuyTime": "2025-11-05 00:23:29",
+          "ParentRateId": 0,
+          "Photos": null,
+          "IsPhoto": false,
+          "CreationTime": "0001-01-01 00:00:00",
+          "IsDeleted": false,
+          "DeletionTime": null,
+          "AuditStatus": 0,
+          "IsAutoPost": false,
+          "UserName": "181***",
+          "HeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+          "SkuPropertyName": null,
+          "Id": 0
+        },
+        "TradeId": 11725240,
+        "UserId": 1518665,
+        "UserName": "181***",
+        "UserHeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+        "Quantity": 1.0,
+        "CreationTime": "2025-11-05 00:23:29",
+        "TradeItems": [
+          {
+            "SkuId": 110236148,
+            "SkuPropNames": "颜色分类:黑色;尺码:43",
+            "Quantity": 1,
+            "OnePrice": 47.04
+          }
+        ]
+      },
+      {
+        "ProductRate": {
+          "TradeId": 11691722,
+          "OrderId": 0,
+          "ProductId": 4476128,
+          "UserId": 1448202,
+          "RateContent": "此用户未填写评价内容",
+          "ProductQualityScore": 5,
+          "BuyTime": "2025-11-01 11:04:07",
+          "ParentRateId": 0,
+          "Photos": null,
+          "IsPhoto": false,
+          "CreationTime": "0001-01-01 00:00:00",
+          "IsDeleted": false,
+          "DeletionTime": null,
+          "AuditStatus": 0,
+          "IsAutoPost": false,
+          "UserName": "131***",
+          "HeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+          "SkuPropertyName": null,
+          "Id": 0
+        },
+        "TradeId": 11691722,
+        "UserId": 1448202,
+        "UserName": "131***",
+        "UserHeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+        "Quantity": 1.0,
+        "CreationTime": "2025-11-01 11:04:07",
+        "TradeItems": [
+          {
+            "SkuId": 110236140,
+            "SkuPropNames": "颜色分类:白色;尺码:41",
+            "Quantity": 1,
+            "OnePrice": 48.0
+          }
+        ]
+      },
+      {
+        "ProductRate": {
+          "TradeId": 11684480,
+          "OrderId": 0,
+          "ProductId": 4476128,
+          "UserId": 995562,
+          "RateContent": "此用户未填写评价内容",
+          "ProductQualityScore": 5,
+          "BuyTime": "2025-10-31 12:05:49",
+          "ParentRateId": 0,
+          "Photos": null,
+          "IsPhoto": false,
+          "CreationTime": "0001-01-01 00:00:00",
+          "IsDeleted": false,
+          "DeletionTime": null,
+          "AuditStatus": 0,
+          "IsAutoPost": false,
+          "UserName": "130***",
+          "HeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+          "SkuPropertyName": null,
+          "Id": 0
+        },
+        "TradeId": 11684480,
+        "UserId": 995562,
+        "UserName": "130***",
+        "UserHeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+        "Quantity": 1.0,
+        "CreationTime": "2025-10-31 12:05:49",
+        "TradeItems": [
+          {
+            "SkuId": 110236147,
+            "SkuPropNames": "颜色分类:黑色;尺码:42",
+            "Quantity": 1,
+            "OnePrice": 48.0
+          }
+        ]
+      },
+      {
+        "ProductRate": {
+          "TradeId": 11578028,
+          "OrderId": 0,
+          "ProductId": 4476128,
+          "UserId": 10333,
+          "RateContent": "此用户未填写评价内容",
+          "ProductQualityScore": 5,
+          "BuyTime": "2025-10-21 11:30:29",
+          "ParentRateId": 0,
+          "Photos": null,
+          "IsPhoto": false,
+          "CreationTime": "0001-01-01 00:00:00",
+          "IsDeleted": false,
+          "DeletionTime": null,
+          "AuditStatus": 0,
+          "IsAutoPost": false,
+          "UserName": "157***",
+          "HeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+          "SkuPropertyName": null,
+          "Id": 0
+        },
+        "TradeId": 11578028,
+        "UserId": 10333,
+        "UserName": "157***",
+        "UserHeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+        "Quantity": 1.0,
+        "CreationTime": "2025-10-21 11:30:29",
+        "TradeItems": [
+          {
+            "SkuId": 110236145,
+            "SkuPropNames": "颜色分类:黑色;尺码:40",
+            "Quantity": 1,
+            "OnePrice": 48.0
+          }
+        ]
+      },
+      {
+        "ProductRate": {
+          "TradeId": 11463531,
+          "OrderId": 0,
+          "ProductId": 4476128,
+          "UserId": 1514546,
+          "RateContent": "此用户未填写评价内容",
+          "ProductQualityScore": 5,
+          "BuyTime": "2025-10-03 12:15:31",
+          "ParentRateId": 0,
+          "Photos": null,
+          "IsPhoto": false,
+          "CreationTime": "0001-01-01 00:00:00",
+          "IsDeleted": false,
+          "DeletionTime": null,
+          "AuditStatus": 0,
+          "IsAutoPost": false,
+          "UserName": "185***",
+          "HeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+          "SkuPropertyName": null,
+          "Id": 0
+        },
+        "TradeId": 11463531,
+        "UserId": 1514546,
+        "UserName": "185***",
+        "UserHeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+        "Quantity": 1.0,
+        "CreationTime": "2025-10-03 12:15:31",
+        "TradeItems": [
+          {
+            "SkuId": 110236150,
+            "SkuPropNames": "颜色分类:卡其;尺码:39",
+            "Quantity": 1,
+            "OnePrice": 47.04
+          }
+        ]
+      },
+      {
+        "ProductRate": {
+          "TradeId": 11411204,
+          "OrderId": 0,
+          "ProductId": 4476128,
+          "UserId": 1508836,
+          "RateContent": "此用户未填写评价内容",
+          "ProductQualityScore": 5,
+          "BuyTime": "2025-09-23 18:57:46",
+          "ParentRateId": 0,
+          "Photos": null,
+          "IsPhoto": false,
+          "CreationTime": "0001-01-01 00:00:00",
+          "IsDeleted": false,
+          "DeletionTime": null,
+          "AuditStatus": 0,
+          "IsAutoPost": false,
+          "UserName": "193***",
+          "HeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+          "SkuPropertyName": null,
+          "Id": 0
+        },
+        "TradeId": 11411204,
+        "UserId": 1508836,
+        "UserName": "193***",
+        "UserHeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+        "Quantity": 1.0,
+        "CreationTime": "2025-09-23 18:57:46",
+        "TradeItems": [
+          {
+            "SkuId": 110236151,
+            "SkuPropNames": "颜色分类:卡其;尺码:40",
+            "Quantity": 1,
+            "OnePrice": 47.04
+          }
+        ]
+      },
+      {
+        "ProductRate": {
+          "TradeId": 11315428,
+          "OrderId": 0,
+          "ProductId": 4476128,
+          "UserId": 1485367,
+          "RateContent": "此用户未填写评价内容",
+          "ProductQualityScore": 5,
+          "BuyTime": "2025-09-05 13:58:03",
+          "ParentRateId": 0,
+          "Photos": null,
+          "IsPhoto": false,
+          "CreationTime": "0001-01-01 00:00:00",
+          "IsDeleted": false,
+          "DeletionTime": null,
+          "AuditStatus": 0,
+          "IsAutoPost": false,
+          "UserName": "191***",
+          "HeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+          "SkuPropertyName": null,
+          "Id": 0
+        },
+        "TradeId": 11315428,
+        "UserId": 1485367,
+        "UserName": "191***",
+        "UserHeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+        "Quantity": 1.0,
+        "CreationTime": "2025-09-05 13:58:03",
+        "TradeItems": [
+          {
+            "SkuId": 110236154,
+            "SkuPropNames": "颜色分类:卡其;尺码:43",
+            "Quantity": 1,
+            "OnePrice": 47.04
+          }
+        ]
+      },
+      {
+        "ProductRate": {
+          "TradeId": 11177701,
+          "OrderId": 0,
+          "ProductId": 4476128,
+          "UserId": 1361416,
+          "RateContent": "此用户未填写评价内容",
+          "ProductQualityScore": 5,
+          "BuyTime": "2025-08-03 03:17:03",
+          "ParentRateId": 0,
+          "Photos": null,
+          "IsPhoto": false,
+          "CreationTime": "0001-01-01 00:00:00",
+          "IsDeleted": false,
+          "DeletionTime": null,
+          "AuditStatus": 0,
+          "IsAutoPost": false,
+          "UserName": "186***",
+          "HeadImg": "https://thirdwx.qlogo.cn/mmopen/vi_32/POgEwh4mIHO4nibH0KlMECNjjGxQUq24ZEaGT4poC6icRiccVGKSyXwibcPq4BWmiaIGuG1icwxaQX6grC9VemZoJ8rg/132",
+          "SkuPropertyName": null,
+          "Id": 0
+        },
+        "TradeId": 11177701,
+        "UserId": 1361416,
+        "UserName": "186***",
+        "UserHeadImg": "https://thirdwx.qlogo.cn/mmopen/vi_32/POgEwh4mIHO4nibH0KlMECNjjGxQUq24ZEaGT4poC6icRiccVGKSyXwibcPq4BWmiaIGuG1icwxaQX6grC9VemZoJ8rg/132",
+        "Quantity": 1.0,
+        "CreationTime": "2025-08-03 03:17:03",
+        "TradeItems": [
+          {
+            "SkuId": 110236141,
+            "SkuPropNames": "颜色分类:白色;尺码:42",
+            "Quantity": 1,
+            "OnePrice": 48.0
+          }
+        ]
+      },
+      {
+        "ProductRate": {
+          "TradeId": 10427789,
+          "OrderId": 0,
+          "ProductId": 4476128,
+          "UserId": 1398820,
+          "RateContent": "此用户未填写评价内容",
+          "ProductQualityScore": 5,
+          "BuyTime": "2025-03-05 23:07:37",
+          "ParentRateId": 0,
+          "Photos": null,
+          "IsPhoto": false,
+          "CreationTime": "0001-01-01 00:00:00",
+          "IsDeleted": false,
+          "DeletionTime": null,
+          "AuditStatus": 0,
+          "IsAutoPost": false,
+          "UserName": "185***",
+          "HeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+          "SkuPropertyName": null,
+          "Id": 0
+        },
+        "TradeId": 10427789,
+        "UserId": 1398820,
+        "UserName": "185***",
+        "UserHeadImg": "https://g1.17qcc.com/2018/seller/UserDefaultImgs/defaultImgs01.jpg",
+        "Quantity": 1.0,
+        "CreationTime": "2025-03-05 23:07:37",
+        "TradeItems": [
+          {
+            "SkuId": 110236149,
+            "SkuPropNames": "颜色分类:黑色;尺码:44",
+            "Quantity": 1,
+            "OnePrice": 47.04
+          }
+        ]
+      }
+    ],
+    "Pages": 2,
+    "TotalItems": 40
+  },
+  "TargetUrl": null,
+  "Success": true,
+  "Error": null,
+  "UnAuthorizedRequest": false,
+  "__abp": true
+}

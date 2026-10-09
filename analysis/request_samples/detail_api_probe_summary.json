@@ -1,0 +1,70 @@
+[
+  {
+    "path": "shopfactory/getshopandsupplier",
+    "ok": true,
+    "params": {
+      "SupplierId": 8206,
+      "PostageType": 2,
+      "TmpVer": null,
+      "Access": "16D59EADCE5D24C526B8056A5A3D58751383867F363CB6D95518FFCE7005B9071D53AE0C28971C8539CD137B2CDAD38E2294673F440BF71BA93E5FA7A8159710C4FCD5124B0BFE99100308C2656D9E1AB3A70C4F8D4F4C0A9A9D078FC443D5C869F58D801665408DB07DC73D66D8C306FB7AEBDE0AF939D3380D002C6DAE6199BF5C08A577FF70DF52BA8F7F5925AE48BD21D84B6CD9301FA91A275A15D47AFA5CDAC9536A90A4DE80B8A1276F7C073346ED9722E830D593880AD29368AA31DCF2FB501A1B3F995F60B97556F16D92D4"
+    },
+    "http": 200,
+    "app_is_login": "1",
+    "top_keys": [
+      "Result",
+      "TargetUrl",
+      "Success",
+      "Error",
+      "UnAuthorizedRequest",
+      "__abp"
+    ],
+    "success": true,
+    "unauthorized": false,
+    "result_len": 3872,
+    "decrypt_err": null
+  },
+  {
+    "path": "ProductFactory/GetProductGrade",
+    "ok": true,
+    "params": {
+      "ProductId": 4476128
+    },
+    "http": 200,
+    "app_is_login": "1",
+    "top_keys": [
+      "Result",
+      "TargetUrl",
+      "Success",
+      "Error",
+      "UnAuthorizedRequest",
+      "__abp"
+    ],
+    "success": true,
+    "unauthorized": false,
+    "result_len": 800,
+    "decrypt_err": null
+  },
+  {
+    "path": "TradeFactory/TradeRecordGetPageList",
+    "ok": true,
+    "params": {
+      "ProductId": 4476128,
+      "Page": 1,
+      "TotalItems": 0
+    },
+    "http": 200,
+    "app_is_login": "1",
+    "top_keys": [
+      "Result",
+      "TargetUrl",
+      "Success",
+      "Error",
+      "UnAuthorizedRequest",
+      "__abp"
+    ],
+    "success": true,
+    "unauthorized": false,
+    "result_len": 31648,
+    "decrypt_err": null
+  }
+]

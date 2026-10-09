@@ -1,0 +1,16 @@
+{
+  "Result": {
+    "OutOfStockRateJson": "[0.00,0.00,0.00,0.00,0.00,0.00,0.00]",
+    "ReturnRateJson": "[0.00,0.00,0.00,0.00,0.00,0.00,0.00]",
+    "CreationTimeJson": "[\"10.01\",\"10.02\",\"10.03\",\"10.04\",\"10.05\",\"10.06\",\"10.07\"]",
+    "MaxOutOfStockRate": 0.0,
+    "MinOutOfStockRate": 0.0,
+    "MaxReturnRate": 0.0,
+    "MinReturnRate": 0.0
+  },
+  "TargetUrl": null,
+  "Success": true,
+  "Error": null,
+  "UnAuthorizedRequest": false,
+  "__abp": true
+}
