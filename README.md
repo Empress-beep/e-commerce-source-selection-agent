@@ -49,6 +49,7 @@
 - **Agent 调度层 `src/agent/function_call_agent.py`**
   - 手写 Function-Call 循环与多轮常驻会话，跨轮保留 state（候选、run_id、Excel 路径）
   - 工具注册与编排：`run_crawl` → `query_product_list` → `ai_select_product` → `import_audit_excel`
+    （另有预留工具 `generate_goods_mateial` / `simulate_goods_publish`，见第 10 节）
   - 调度日志双写 `logs/agent_<ts>.log`
 - **AI 选品模块 `src/selector/`**
   - `product_selector.py`：MySQL 参数化硬性条件初筛（run_id 批次隔离）
@@ -178,3 +179,20 @@ python src/selector/excel_audit_import.py --file output/excel/<文件名>_pendin
 <!-- 5：Excel审核结果回写数据库交互 -->
 
 ![审核结果导入交互日志](./docs/screenshots/agent_console2.png)
+
+---
+
+## 10. 待开发功能
+
+Agent 调度层已预留工具槽位（`src/agent/function_call_agent.py` 中的 `generate_goods_mateial` / `simulate_goods_publish`），当前调用只会返回「待后续迭代实现」，计划沿以下两条继续演进：
+
+| 功能 | 预留工具 | 规划说明 |
+|---|---|---|
+| **AI 文案生成** | `generate_goods_mateial(product_ids)` | 针对人工审核通过（`audit_status='pass'`）的商品，基于商品详情自动生成上架标题、卖点、详情文案与配图 prompt 等营销素材；商品 ID 由执行器自动注入，生成结果落库/落盘，供人工修改后再进入上架环节 |
+| **商品上架** | `simulate_goods_publish(product_ids)` | 素材确认后进入商品上架流程：先实现**本地模拟发布**（记录上架参数与结果），再评估对接真实店铺后台接口 |
+
+说明：
+
+- 两个工具与主链路（采集 → 初筛 → AI 选品 → 人工审核）解耦，可独立迭代，不影响现有功能；
+- 审核红线不变：**是否上架、是否采用生成的文案，最终由人工决定**，AI 只产出候选素材；
+- 涉及真实店铺发布的部分属于生产用途，本仓库仅保留本地模拟实现（见第 8 节注意事项）。
