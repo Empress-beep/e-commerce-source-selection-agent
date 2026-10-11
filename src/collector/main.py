@@ -4,8 +4,8 @@
 ----------
 * **命令行**：``python -m src.collector.main --keyword xx --page xx``（单独爬虫调试）；
 * **程序导入**：``from src.collector.main import run_crawl`` ->
-  ``run_crawl(keyword, page, limit)``，Function-Call Agent 用入口，
-  内部复用同一套 ``main()``，返回采集条数/入库统计结果字典。
+  ``run_crawl(keyword, page, limit, cateid, resume)``，Function-Call Agent 用入口
+  （``resume`` 非空 = 断点续爬），内部复用同一套 ``main()``，返回采集条数/入库统计结果字典。
 
 运行示例
 --------
@@ -15,6 +15,7 @@
     python -m src.collector.main --bootstrap-only                    # 只验证首页密钥
     python -m src.collector.main --no-db                             # 只写日志不入库
     python -m src.collector.main --no-etl                            # 只备份不汇总业务表
+    python -m src.collector.main --resume 20261009_125128            # 断点续爬（接续指定 run_id）
     python -m src.collector.main --anon --detail-limit 0             # 匿名、不采详情
 
 输出约定（三通道各司其职 + 两套日志模式）
@@ -44,6 +45,13 @@
   解密**回填详情行 ``decoded_json``；
 * 风控节奏：商品间 ``--item-delay``（默认 3s），关键词间
   ``--keyword-delay``（默认 180s）；详情默认只采列表前 20 条；
+* **断点续爬**：``--resume <run_id>`` 以 ``api_backup`` 成功行
+  （``decrypt_ok=1``）为唯一事实源推导断点——列表已完成的关键词直接复用
+  备份明文（不再发列表请求），详情按「商品 × 接口域」判定缺哪补哪；
+  不新建状态表、不预写占位行（待采集集合 = list 全量明文前 N − 已成功
+  集合现场推导）；中断（Ctrl+C/异常/登录态失效）后用原 run_id 续跑，
+  末尾 ETL 幂等重跑收口，``product_info`` 与一次跑完的结果一致；
+  续跑时 ``--keywords/--cateid/--detail-apis`` 等参数须与原 run 一致；
 * 运行末尾 ETL（``src.collector.etl``）把备份表汇总成 ``product_info``
   业务表（清洗后的 AI 选品字段），``--no-etl`` 可关闭；ETL 后执行详情准入
   清理：未成功拉取详情的列表目标（``api_backup`` 无该商品 ``category='page'``
@@ -178,6 +186,90 @@ def _extract_targets(decoded_text: str | None, limit: int) -> list[dict]:
             continue
         targets.append({"product_id": pid, "url": url})
     return targets
+
+
+# --------------------------------------------------------------------------
+# 断点续爬（--resume）：api_backup 成功行 -> 断点快照推导（不新建状态表）
+# --------------------------------------------------------------------------
+# 详情域 api_name -> 键（content/shop/grade/trade），断点判定用
+_API_NAME_TO_KEY = {v[0]: k for k, v in DETAIL_APIS.items()}
+
+
+def _build_checkpoint(rows: list[dict]) -> dict:
+    """由 ``api_backup`` 成功行（调用方已过滤 ``decrypt_ok=1``）推导断点快照。
+
+    :returns: ``{"list_keywords": set[str], "products": {pid: {域键: True}}}``。
+        list 行仅收录 ``item_count`` 非空的（``Result=null`` 失效行为 NULL，
+        SQL 已过滤，这里再兜一层）；page/detail 行按 ``product_id`` 归并，
+        detail 行经 :data:`_API_NAME_TO_KEY` 映射到 content/shop/grade/trade。
+        表里没有行的实体 = 待采集（不预写占位行，由调用方与 list 明文求差集）。
+    """
+    list_keywords: set[str] = set()
+    products: dict[int, dict] = {}
+    for row in rows or []:
+        cat = row.get("category")
+        pid = row.get("product_id")
+        if cat == "list":
+            kw = row.get("keyword")
+            if kw and row.get("item_count") is not None:
+                list_keywords.add(str(kw))
+        elif cat == "page" and pid:
+            products.setdefault(int(pid), {})["page"] = True
+        elif cat == "detail" and pid:
+            key = _API_NAME_TO_KEY.get(row.get("api_name"))
+            if key:
+                products.setdefault(int(pid), {})[key] = True
+    return {"list_keywords": list_keywords, "products": products}
+
+
+def _product_done(checkpoint: dict, product_id, wanted) -> bool:
+    """商品断点判定：page 行 + ``wanted`` 各详情域均已有成功行才算完成。"""
+    done = checkpoint["products"].get(int(product_id), {})
+    if not done.get("page"):
+        return False
+    return all(done.get(k) for k in wanted)
+
+
+def _load_checkpoint(log, run_id: str) -> dict:
+    """从 ``api_backup`` 加载断点快照（一次查询；DB 异常按空断点全量重采）。"""
+    try:
+        rows = database.fetch_all(
+            BACKUP_TABLE,
+            where=(
+                "run_id = %s AND decrypt_ok = 1 AND ("
+                "(category = 'list' AND keyword IS NOT NULL AND item_count IS NOT NULL)"
+                " OR (category = 'page' AND product_id IS NOT NULL)"
+                " OR (category = 'detail' AND product_id IS NOT NULL))"
+            ),
+            params=[run_id],
+            cols="category, api_name, keyword, product_id, item_count",
+        )
+    except database.DatabaseError as exc:
+        log.warning(f"      断点加载失败（按无断点全量重采）: {exc}")
+        return {"list_keywords": set(), "products": {}}
+    return _build_checkpoint(rows)
+
+
+def _load_list_decoded(log, run_id: str, keyword: str) -> str | None:
+    """取该关键词最新的列表成功明文（断点命中时复用，不再请求列表接口）。"""
+    try:
+        rows = database.fetch_all(
+            BACKUP_TABLE,
+            where=(
+                "run_id = %s AND keyword = %s AND category = 'list' "
+                "AND decrypt_ok = 1 AND item_count IS NOT NULL"
+            ),
+            params=[run_id, keyword],
+            cols="id, decoded_json",
+        )
+    except database.DatabaseError as exc:
+        log.warning(f"      列表断点明文读取失败（重采列表）: {exc}")
+        return None
+    if not rows:
+        return None
+    best = max(rows, key=lambda r: r.get("id") or 0)
+    text = best.get("decoded_json")
+    return text if text else None
 
 
 # --------------------------------------------------------------------------
@@ -505,6 +597,13 @@ def parse_args(argv=None) -> argparse.Namespace:
     ap.add_argument("--no-db", action="store_true", help="不写 MySQL，只写日志")
     ap.add_argument("--no-etl", action="store_true", help="跳过 product_info 业务表 ETL")
     ap.add_argument("--run-id", help="自定义运行标识(默认 YYYYmmdd_HHMMSS)")
+    ap.add_argument(
+        "--resume",
+        default="",
+        metavar="RUN_ID",
+        help="断点续爬：接续采集指定 run_id（需数据库；"
+             "keywords/cateid/detail-apis 等参数与原 run 保持一致）",
+    )
     ap.add_argument("--out", help="把解密后的列表明文 JSON 另存到该文件")
     # 明细落日志的开关（不影响控制台：控制台永远只有简要进度）
     ap.add_argument("--full", action="store_true", help="日志文件里写完整明文 JSON")
@@ -522,12 +621,29 @@ def main(argv=None) -> int:
         keywords = [args.keyword]
 
     # ---- [1/5] 运行初始化：日志文件 + 数据库 ----
-    run_id = args.run_id or time.strftime("%Y%m%d_%H%M%S")
+    resume_id = (args.resume or "").strip()
+    run_id = resume_id or args.run_id or time.strftime("%Y%m%d_%H%M%S")
     log_path = run_logger.init(run_id, mode=_log_mode())
     log = run_logger.get_logger()
-    log.info(f"[1/5] 运行开始 run_id={run_id} 关键词={len(keywords)}个 [{','.join(keywords)}]")
+    log.info(
+        f"[1/5] 运行开始 run_id={run_id} 关键词={len(keywords)}个 "
+        f"[{','.join(keywords)}]{'（断点续跑）' if resume_id else ''}"
+    )
     log.debug(f"      日志文件: {log_path}")
     db_enabled = _init_db(log, not args.no_db)
+
+    # ---- 断点续爬：api_backup 成功行推导断点快照（不新建状态表） ----
+    checkpoint = None
+    if resume_id:
+        if not db_enabled:
+            log.error("[x] --resume 依赖数据库推导断点，--no-db 模式不支持续跑")
+            return 2
+        checkpoint = _load_checkpoint(log, run_id)
+        log.info(
+            f"      断点快照: 已完成列表关键词 {len(checkpoint['list_keywords'])} 个"
+            f"[{','.join(sorted(checkpoint['list_keywords'])) or '无'}]；"
+            f"已有详情数据商品 {len(checkpoint['products'])} 个"
+        )
 
     # 详情接口选择（提前解析，避免每个关键词重复处理）
     wanted = [k.strip() for k in (args.detail_apis or "").split(",") if k.strip()]
@@ -541,14 +657,54 @@ def main(argv=None) -> int:
     page_total = 0
     counters = {k: 0 for k in DETAIL_API_ORDER}
 
+    resume_stats = {"kw_skipped": 0, "list_reused": 0,
+                    "prod_skipped": 0, "prod_partial": 0}
+    prev_requested = False  # 上一关键词是否实际发过请求（风控延迟只连着"干活"的关键词）
+
     for kw_idx, keyword in enumerate(keywords):
-        # ---- 批次间隔（风控：关键词间默认 3 分钟） ----
-        if kw_idx > 0 and args.keyword_delay > 0:
+        # ---- 断点：列表明文复用 / 全完成关键词整段跳过 ----
+        list_decoded: str | None = None
+        if checkpoint is not None and keyword in checkpoint["list_keywords"]:
+            list_decoded = _load_list_decoded(log, run_id, keyword)
+            cp_targets = (
+                _extract_targets(list_decoded, detail_limit) if list_decoded else []
+            )
+            cp_count = (
+                _page_meta(list_decoded).get("item_count") if list_decoded else None
+            )
+            if list_decoded is None or (
+                detail_limit > 0 and cp_count and not cp_targets
+            ):
+                # 明文缺失/提不出目标（结构异常）-> 放弃该关键词的列表断点
+                log.warning(f"      keyword={keyword} 列表备份不可用，重采列表")
+                list_decoded = None
+            else:
+                pending = [
+                    t for t in cp_targets
+                    if not _product_done(checkpoint, t["product_id"], wanted)
+                ]
+                if not pending:
+                    log.info(
+                        f"      keyword={keyword} 断点已完成"
+                        f"（列表+详情 {len(cp_targets)} 条），整段跳过"
+                    )
+                    resume_stats["kw_skipped"] += 1
+                    list_ok += 1  # 断点已完成视同列表成功（决定退出码）
+                    continue
+                log.info(
+                    f"      keyword={keyword} 列表断点命中，复用备份明文；"
+                    f"待补详情 {len(pending)}/{len(cp_targets)} 条"
+                )
+
+        # ---- 批次间隔（风控：仅当上一关键词实际发过请求时等待） ----
+        if prev_requested and args.keyword_delay > 0:
             log.debug(f"      关键词间隔等待 {args.keyword_delay:.0f}s（风控）...")
             time.sleep(args.keyword_delay)
 
-        # ---- [2/5] 首页密钥（每关键词重新引导，key/iv 一次性） ----
+        # ---- [2/5] 首页密钥（每关键词重新引导，key/iv 一次性；
+        #      续跑即使列表复用，详情接口加密仍需本次 tokens） ----
         log.debug(f"[2/5] GET 首页取 key/iv keyword={keyword} ...")
+        prev_requested = True  # 即将发首页 GET（成败都算一次请求，风控照等）
         try:
             tokens = bootstrap(keyword=keyword, cateid=args.cateid, spm=args.spm)
         except Exception as exc:  # noqa: BLE001
@@ -564,87 +720,97 @@ def main(argv=None) -> int:
             log.info("[完成] --bootstrap-only，未发业务请求")
             return 0
 
-        # ---- [3/5] 列表接口 ----
-        params = business_params(
-            keyword=keyword, cateid=args.cateid, spm=args.spm,
-            page=args.page, page_size=args.page_size,
-        )
-        log.info(f"[3/5] POST {LIST_API_NAME} keyword={keyword} page={args.page}")
-        run_logger.log_block(
-            log, "列表请求明文参数", json.dumps(params, ensure_ascii=False, indent=2)
-        )
-        try:
-            result = post(
-                tokens, params, guest_id=args.guest_id, login=not args.anon,
-                with_headers=True,
+        # ---- [3/5] 列表接口（断点命中：复用备份明文，不发请求、不重复入库） ----
+        if list_decoded is not None:
+            decoded_text = list_decoded
+            meta = _page_meta(decoded_text)
+            log.info(
+                f"[3/5] {LIST_API_NAME} keyword={keyword} 断点复用备份明文 "
+                f"条目={meta.get('item_count')}（本次未发列表请求）"
             )
-        except Exception as exc:  # noqa: BLE001 - requests.HTTPError 等
-            log.error(f"[x] 列表请求失败 keyword={keyword}: {exc!r}")
-            continue
-
-        assert isinstance(result, PostResult)
-        resp, rh = result.json, result.headers
-        raw_json = json.dumps(resp, ensure_ascii=False)
-        run_logger.log_block(log, "列表响应原始报文", raw_json)
-
-        decoded_text, dec_err = _try_decrypt(resp, tokens)
-        meta = _page_meta(decoded_text)
-        ok = resp.get("success", resp.get("Success", True))
-
-        row = {
-            "run_id": run_id,
-            "category": "list",
-            "api_name": LIST_API_NAME,
-            "api_url": result.url,
-            "keyword": keyword,
-            "page_no": args.page,
-            "item_count": meta.get("item_count"),
-            "product_id": None,
-            "detail_url": None,
-            "guest_id": args.guest_id,
-            "login_flag": rh.get("App-Is-Login"),
-            "http_status": 200,
-            # key/iv 每次首页下发都不同（一次性），不随行保存则本行密文日后解不开
-            "aes_key": tokens.aes_key,
-            "iv": tokens.iv,
-            "req_body": json.dumps(result.request_body, ensure_ascii=False),
-            "raw_json": raw_json,
-            "decoded_json": decoded_text,
-            "decrypt_ok": 1 if decoded_text else 0,
-            "error_msg": dec_err,
-            "remark": (
-                "目标发现接口: 仅取 ProductId/Url; 卡片指标(销量/曝光/点击)由ETL汇总; "
-                f"TotalCount={meta.get('TotalCount')} TotalPages={meta.get('TotalPages')} "
-                f"HasNextPage={meta.get('HasNextPage')}"
-            )[:500],
-        }
-        row_id = _store(log, db_enabled, row)
-
-        log.info(
-            f"      HTTP=200 登录={rh.get('App-Is-Login')} "
-            f"解密={'成功' if decoded_text else '失败'} "
-            f"条目={meta.get('item_count')} 备份行={row_id if row_id else '未入库'}"
-        )
-        if dec_err:
-            log.warning(f"      解密异常(已原样备份 raw_json): {dec_err}")
-        if not ok or decoded_text is None:
-            log.warning(f"[x] 本关键词列表不可用（原始报文已备份），跳过详情: {keyword}")
-            continue
-        # 解密成功但 Result=null（登录态失效/风控空响应）也按列表不可用处理，
-        # 否则后续 .get 链会以 NoneType AttributeError 崩掉整个批次
-        try:
-            _parsed = json.loads(decoded_text)
-        except json.JSONDecodeError:
-            _parsed = None
-        if isinstance(_parsed, dict) and _parsed.get("Result") is None:
-            log.warning(
-                f"[x] 列表明文 Result=null（App-Is-Login={rh.get('App-Is-Login')}，"
-                f"疑似登录态失效），跳过详情: {keyword}"
+            list_ok += 1
+            resume_stats["list_reused"] += 1
+        else:
+            params = business_params(
+                keyword=keyword, cateid=args.cateid, spm=args.spm,
+                page=args.page, page_size=args.page_size,
             )
-            continue
-        list_ok += 1
+            log.info(f"[3/5] POST {LIST_API_NAME} keyword={keyword} page={args.page}")
+            run_logger.log_block(
+                log, "列表请求明文参数", json.dumps(params, ensure_ascii=False, indent=2)
+            )
+            try:
+                result = post(
+                    tokens, params, guest_id=args.guest_id, login=not args.anon,
+                    with_headers=True,
+                )
+            except Exception as exc:  # noqa: BLE001 - requests.HTTPError 等
+                log.error(f"[x] 列表请求失败 keyword={keyword}: {exc!r}")
+                continue
 
-        # 完整明文 -> 只进日志文件 / --out 文件
+            assert isinstance(result, PostResult)
+            resp, rh = result.json, result.headers
+            raw_json = json.dumps(resp, ensure_ascii=False)
+            run_logger.log_block(log, "列表响应原始报文", raw_json)
+
+            decoded_text, dec_err = _try_decrypt(resp, tokens)
+            meta = _page_meta(decoded_text)
+            ok = resp.get("success", resp.get("Success", True))
+
+            row = {
+                "run_id": run_id,
+                "category": "list",
+                "api_name": LIST_API_NAME,
+                "api_url": result.url,
+                "keyword": keyword,
+                "page_no": args.page,
+                "item_count": meta.get("item_count"),
+                "product_id": None,
+                "detail_url": None,
+                "guest_id": args.guest_id,
+                "login_flag": rh.get("App-Is-Login"),
+                "http_status": 200,
+                # key/iv 每次首页下发都不同（一次性），不随行保存则本行密文日后解不开
+                "aes_key": tokens.aes_key,
+                "iv": tokens.iv,
+                "req_body": json.dumps(result.request_body, ensure_ascii=False),
+                "raw_json": raw_json,
+                "decoded_json": decoded_text,
+                "decrypt_ok": 1 if decoded_text else 0,
+                "error_msg": dec_err,
+                "remark": (
+                    "目标发现接口: 仅取 ProductId/Url; 卡片指标(销量/曝光/点击)由ETL汇总; "
+                    f"TotalCount={meta.get('TotalCount')} TotalPages={meta.get('TotalPages')} "
+                    f"HasNextPage={meta.get('HasNextPage')}"
+                )[:500],
+            }
+            row_id = _store(log, db_enabled, row)
+
+            log.info(
+                f"      HTTP=200 登录={rh.get('App-Is-Login')} "
+                f"解密={'成功' if decoded_text else '失败'} "
+                f"条目={meta.get('item_count')} 备份行={row_id if row_id else '未入库'}"
+            )
+            if dec_err:
+                log.warning(f"      解密异常(已原样备份 raw_json): {dec_err}")
+            if not ok or decoded_text is None:
+                log.warning(f"[x] 本关键词列表不可用（原始报文已备份），跳过详情: {keyword}")
+                continue
+            # 解密成功但 Result=null（登录态失效/风控空响应）也按列表不可用处理，
+            # 否则后续 .get 链会以 NoneType AttributeError 崩掉整个批次
+            try:
+                _parsed = json.loads(decoded_text)
+            except json.JSONDecodeError:
+                _parsed = None
+            if isinstance(_parsed, dict) and _parsed.get("Result") is None:
+                log.warning(
+                    f"[x] 列表明文 Result=null（App-Is-Login={rh.get('App-Is-Login')}，"
+                    f"疑似登录态失效），跳过详情: {keyword}"
+                )
+                continue
+            list_ok += 1
+
+        # ---- 公共：明文展示/落盘 + 目标提取（列表现采/断点复用两条路径共用） ----
         if args.full:
             run_logger.log_block(log, "列表明文全文", decoded_text)
         if args.show > 0:
@@ -678,21 +844,33 @@ def main(argv=None) -> int:
 
         tmp_ver_logged = False
         for idx, t in enumerate(targets):
-            # 商品间间隔（风控：默认 3s）
+            pid, url = t["product_id"], t["url"]
+            # ---- 断点：page + 所需详情域均有成功行 -> 整商品跳过（不请求、不计延迟） ----
+            done_map = checkpoint["products"].get(int(pid), {}) if checkpoint else {}
+            missing_apis = [k for k in wanted if not done_map.get(k)]
+            if checkpoint is not None and done_map.get("page") and not missing_apis:
+                resume_stats["prod_skipped"] += 1
+                continue
+            # 商品间间隔（风控：默认 3s；仅对实际发请求的商品生效）
             if idx > 0 and args.item_delay > 0:
                 time.sleep(args.item_delay)
-            pid, url = t["product_id"], t["url"]
-            # 1) 每商品重新 GET 详情页 HTML（登录 Cookie -> SSR 当前商品详情）
+            if checkpoint is not None and done_map.get("page"):
+                resume_stats["prod_partial"] += 1  # page 已完成，重抓仅为取动态参数
+            # 1) GET 详情页 HTML（page 缺失=首次采集落库；page 已完成=重抓仅为
+            #    取 accessC/pageParam 供缺失接口用，不重复入库）
             try:
                 page = fetch_detail_page(url, session=tokens.session, cookie=LOGIN_COOKIE)
             except DetailError as exc:
                 log.warning(f"      {pid} 详情页跳过: {exc}")
                 continue
             parsed = parse_product_detail(page.html, page.page_param)
-            page_row_id = _store_detail_page(
-                log, db_enabled, run_id, tokens, args, keyword, pid, url,
-                page.html, parsed,
-            )
+            if done_map.get("page"):
+                page_row_id = None  # 断点已有成功 page 行，重抓结果不再追加
+            else:
+                page_row_id = _store_detail_page(
+                    log, db_enabled, run_id, tokens, args, keyword, pid, url,
+                    page.html, parsed,
+                )
             page_total += 1
             if parsed.get("guest_render"):
                 log.warning(
@@ -703,20 +881,24 @@ def main(argv=None) -> int:
                 f"SKU={len(parsed.get('colors') or [])}色"
                 f"/{len(parsed.get('sku') and parsed['sku'][0]['sizes'] or [])}码 "
                 f"库存={parsed.get('stock_total')} "
-                f"备份行={page_row_id if page_row_id else '未入库'}"
+                f"备份行={page_row_id if page_row_id else ('断点已有' if done_map.get('page') else '未入库')}"
             )
 
-            # 2) TmpVer 动态提取（确认项2：不硬编码，进程内缓存）
-            try:
-                tmp_ver = fetch_tmp_ver(html=page.html, session=tokens.session)
-            except DetailError as exc:
-                log.warning(f"      {pid} TmpVer 提取失败，本商品跳过: {exc}")
-                continue
-            if not tmp_ver_logged:
-                log.debug(f"      TmpVer 动态提取={tmp_ver}（源=bundle combo，进程内缓存）")
-                tmp_ver_logged = True
+            # 2) TmpVer 动态提取（确认项2：不硬编码，进程内缓存；
+            #    仅缺失 content/shop 时需要）
+            tmp_ver = None
+            if "content" in missing_apis or "shop" in missing_apis:
+                try:
+                    tmp_ver = fetch_tmp_ver(html=page.html, session=tokens.session)
+                except DetailError as exc:
+                    log.warning(f"      {pid} TmpVer 提取失败，本商品跳过: {exc}")
+                    continue
+                if not tmp_ver_logged:
+                    log.debug(f"      TmpVer 动态提取={tmp_ver}（源=bundle combo，进程内缓存）")
+                    tmp_ver_logged = True
 
-            # 3) 详情域接口（默认参数绑定到循环变量，避免闭包拿到最后一次迭代的值）
+            # 3) 详情域接口（断点续跑只补缺失域；默认参数绑定到循环变量，
+            #    避免闭包拿到最后一次迭代的值）
             calls = {
                 "content": lambda p=page, i=pid, v=tmp_ver: post_detail(
                     tokens, i, p.url, p.access_c, v,
@@ -730,7 +912,7 @@ def main(argv=None) -> int:
                     tokens, i, p.url, guest_id=args.guest_id, login=not args.anon,
                 ),
             }
-            for key in wanted:
+            for key in missing_apis:
                 if key == "trade":
                     # 第1页: TotalItems=0（前端初值）
                     trade_p1 = _run_detail_call(
@@ -806,6 +988,13 @@ def main(argv=None) -> int:
         f"[完成] 关键词 {list_ok}/{len(keywords)} 成功；详情页 {page_total} 个 + "
         f"详情接口 {detail_done} 条({parts}) -> {db_note}；日志 {log_path}"
     )
+    if checkpoint is not None:
+        log.info(
+            f"      断点续跑: 跳过已完成关键词 {resume_stats['kw_skipped']} 个, "
+            f"复用列表明文 {resume_stats['list_reused']} 个, "
+            f"跳过已完成商品 {resume_stats['prod_skipped']} 个, "
+            f"半成品补采 {resume_stats['prod_partial']} 个"
+        )
     if list_ok == 0:
         return 3
     return 0
@@ -888,7 +1077,13 @@ def _log_uncaught(run_id: str, headline: str, exc: BaseException,
         pass
 
 
-def run_crawl(keyword: str, page: int = 1, limit: int = 20, cateid: str = "0") -> dict:
+def run_crawl(
+    keyword: str,
+    page: int = 1,
+    limit: int = 20,
+    cateid: str = "0",
+    resume: str = "",
+) -> dict:
     """Agent 双入口：单关键词「采集 + 清洗 + 入库」全流程（Function-Call Agent 导入调用）。
 
     与命令行入口 ``python -m src.collector.main`` 共用同一套 ``main()`` 内部逻辑
@@ -906,6 +1101,10 @@ def run_crawl(keyword: str, page: int = 1, limit: int = 20, cateid: str = "0") -
               ``api_backup``（目标发现/销量指标来源）
     cateid  : 类目限制 id（对应 ``--cateid``）。默认 ``"0"``=不限类目；
               如男鞋 ``50011740``，由业务人员按需指定
+    resume  : 断点续爬标识（对应 ``--resume <run_id>``）。非空 = 接续采集
+              指定 run_id 的中断批次（依赖数据库，按 ``api_backup`` 成功行
+              跳过已完成关键词/商品、半成品补采）；keyword/cateid 必须与
+              原运行一致。空 = 普通新采集（生成新 run_id）
 
     返回
     ----
@@ -914,16 +1113,22 @@ def run_crawl(keyword: str, page: int = 1, limit: int = 20, cateid: str = "0") -
 
     * ``count``        = 本次清洗写入 ``product_info`` 的条数
       （Agent 判断「采集条数是否为 0」并决定是否终止任务的依据）；
+      断点续跑时为该 run_id 的累计条数（幂等 ETL）；
     * ``backup_count`` = 本次 ``api_backup`` 原始备份行数（原始数据入库核对）。
     """
-    run_id = time.strftime("%Y%m%d_%H%M%S")
+    resume_id = str(resume or "").strip()
+    run_id = resume_id or time.strftime("%Y%m%d_%H%M%S")
     argv = [
         "--keyword", str(keyword),
         "--page", str(int(page)),
         "--detail-limit", str(int(limit)),
         "--cateid", str(cateid or "0"),
-        "--run-id", run_id,
     ]
+    if resume_id:
+        # --resume 优先于 --run-id（main() 内 run_id = resume_id），不重复传
+        argv += ["--resume", resume_id]
+    else:
+        argv += ["--run-id", run_id]
     try:
         code = main(argv)
     except Exception as exc:  # noqa: BLE001 - Agent 工具层只回结果不抛异常
@@ -943,7 +1148,8 @@ def run_crawl(keyword: str, page: int = 1, limit: int = 20, cateid: str = "0") -
         "success": success,
         "count": clean,
         "message": (
-            f"keyword={keyword} run_id={run_id} "
+            f"keyword={keyword} run_id={run_id}"
+            f"{'（断点续跑）' if resume_id else ''} "
             f"api_backup 原始入库 {backup} 行, product_info 清洗入库 {clean} 行"
             + ("" if success else "（列表阶段未成功，请检查关键词/风控）")
         ),

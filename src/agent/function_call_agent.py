@@ -196,9 +196,12 @@ SYSTEM_PROMPT = """\
 跨轮保留，同一任务链路不会重复采集、不会重复 AI 选品。
 
 可用工具：
-1. run_crawl(keyword, page, limit, cateid)：执行商品爬虫采集、数据清洗并入库；返回 count=本次入库条数。
+1. run_crawl(keyword, page, limit, cateid, resume)：执行商品爬虫采集、数据清洗并入库；返回 count=本次入库条数。
    cateid 可选，类目限制 id，默认不传=不限类目；仅当用户明确要求限定类目时才传
    （如男鞋 50011740）。
+   resume 可选断点续爬：仅当用户要求继续/补跑此前中断的采集时，传上次采集的 run_id
+   （可从此前工具返回/汇总中的 run_id 获取）；此时 keyword/cateid 必须与原运行一致，
+   普通新采集不传。
 2. query_product_list(cate_name, max_wholesale_price, min_buy_count, max_return_goods_rate, run_id)：
    MySQL 硬性规则初筛，业务条件全部可选；run_id 由执行器自动注入本轮采集批次
    （只查本轮 run_crawl 的数据，隔离历史脏数据），你固定传空字符串 "" 即可
@@ -270,6 +273,10 @@ TOOLS: list[dict] = [
                     "cateid": {
                         "type": "string",
                         "description": "可选类目限制 id，不传或传 \"0\" = 不限类目；仅用户明确要求限定类目时传（如男鞋 50011740）",
+                    },
+                    "resume": {
+                        "type": "string",
+                        "description": "可选断点续爬标识：用户要求继续/补跑此前中断的采集时，传上次采集的 run_id（其余参数 keyword/cateid 必须与原运行一致）；普通新采集不传或传空字符串 \"\"",
                     },
                 },
                 "required": ["keyword"],
@@ -736,11 +743,15 @@ def _execute_tool(name: str, args: dict, state: dict) -> dict:
         page = _as_int(args.get("page"), 1)
         limit = _as_int(args.get("limit"), 20)
         cateid = str(args.get("cateid") or "0").strip() or "0"
+        resume = str(args.get("resume") or "").strip()
         print(
             f"[Agent] 调用 run_crawl keyword={keyword} page={page} "
-            f"limit={limit} cateid={cateid} ..."
+            f"limit={limit} cateid={cateid}"
+            f"{' resume=' + resume if resume else ''} ..."
         )
-        result = run_crawl(keyword, page=page, limit=limit, cateid=cateid)
+        result = run_crawl(
+            keyword, page=page, limit=limit, cateid=cateid, resume=resume
+        )
         state["last_crawl_ts"] = time.time()
         state["crawl_runs"].append(result)
         # 批次 run_id 保存到 state：query_product_list 注入做数据隔离

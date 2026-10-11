@@ -44,7 +44,7 @@
 
 - **爬虫模块 `src/collector/`**
   - 首页密钥引导 `bootstrap.py`、请求信封与加解密 `envelope.py` / `decode.py`
-  - 列表与详情采集编排 `main.py`、详情页 SSR 解析 `detail.py`
+  - 列表与详情采集编排 `main.py`（支持断点续跑 `--resume`）、详情页 SSR 解析 `detail.py`
   - 清洗入库 `etl.py`（原始备份表 → 业务表）、登录态凭证 `session_login.py`
 - **Agent 调度层 `src/agent/function_call_agent.py`**
   - 手写 Function-Call 循环与多轮常驻会话，跨轮保留 state（候选、run_id、Excel 路径）
@@ -125,9 +125,23 @@ python -m src.agent.function_call_agent
 
 ```bash
 python -m src.collector.main --keyword 春季男鞋 --page 1   # 单独跑爬虫（debug 日志模式）
+python -m src.collector.main --resume <run_id> --keyword 春季男鞋   # 中断后续跑（见下）
 python -m src.selector.product_selector                    # 单独跑数据库初筛演示
 python src/selector/excel_audit_import.py --file output/excel/<文件名>_pending_audit.xlsx
 ```
+
+### 断点续爬（采集中断后原地续跑）
+
+采集中途因 Ctrl+C、网络异常或登录态过期中断后，无需整批重跑——用原 `run_id` 续跑，已完成部分自动跳过、只补缺：
+
+```bash
+# run_id 见日志首行（run_id=yyyymmdd_hhmmss）；关键词/类目须与原运行一致
+python -m src.collector.main --resume <run_id> --keyword 春季板鞋男
+```
+
+Agent 对话里同样支持：说「继续采集上次中断的批次，run_id 是 xxx」，模型会调用 `run_crawl(keyword=..., resume="<run_id>")` 完成续跑，返回结果带「（断点续跑）」标记。
+
+实现思路：以原始备份表 `api_backup` 的成功行（`decrypt_ok=1`）为断点事实源——列表已完成的关键词直接复用备份明文（不重发请求），详情按「商品 × 接口域」粒度缺哪补哪；末尾 ETL 幂等重跑收口，业务表结果与一次跑完一致。典型场景：**登录态过期导致详情页只剩游客占位 → 刷新登录凭证后 `--resume` 自动补齐**。
 
 ---
 
