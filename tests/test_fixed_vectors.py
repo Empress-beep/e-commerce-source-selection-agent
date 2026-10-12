@@ -11,8 +11,8 @@ from src.collector.envelope import decrypt_hex, encrypt_content, sign_content, t
 
 STATE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "js_reverse_cache",
-    "state",
+    "tests",
+    "fixtures",
     "envelope_sample.json",
 )
 

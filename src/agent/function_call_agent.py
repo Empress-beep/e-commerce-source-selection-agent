@@ -22,8 +22,14 @@
   返回统计；工具自身**不产生任何审核决策**）
 * ``manual_audit_product``  —— 审核工具**仅人类调用**：只注册 schema + 拒绝空壳，
   大模型禁止自主调用做审核决策；Agent 只产出待审核产物（``*_pending_audit.xlsx``）
-* ``generate_goods_mateial`` / ``simulate_goods_publish``
-  —— 预留扩展工具：只注册 schema + 空壳，打印“待后续迭代实现”
+* ``generate_goods_mateial`` <- ``from src.material.generator import generate_goods_material``
+  （P1 文案素材生成：pass 商品 -> 千问文案 -> product_material 断点落库 +
+  待素材审核 Excel；商品 ID 由执行器注入）
+* ``import_material_audit_excel`` <- ``from src.material.excel_material_import import import_material_audit_excel``
+  （Agent 内工具封装：读取**人类已填写完毕**的素材审核 Excel -> 复用
+  ``src/material/material_audit.py`` 状态机校验 -> 批量回写 MySQL product_material
+  -> 归档 -> 返回统计；工具自身**不产生任何审核决策**）
+* ``simulate_goods_publish`` —— 预留扩展工具：只注册 schema + 空壳，打印“待后续迭代实现”
 
 交互式常驻会话（分段任务执行，解决任务割裂）
 --------------------------------------------
@@ -38,8 +44,11 @@
 4. 用户输入“已审核完成，执行后续操作” -> 调用 ``import_audit_excel`` 导入
    回写（读取 / 状态校验 / 同步 MySQL / 归档，纯机械 IO）；
 5. 查询 ``audit_status='pass'`` 商品 ID -> 调用 ``generate_goods_mateial``
-   （预留空壳，商品 ID 由执行器注入）；
-6. 继续回到等待用户输入状态；只有输入 ``exit`` 才结束 Agent 进程。
+   （P1 文案生成真实现，商品 ID 由执行器注入，gen_status 断点幂等）；
+6. 产出待素材审核 Excel 后**继续等待**：业务人员填写素材审核表并保存，
+   用户输入“已审核素材表，执行后续操作” -> 调用 ``import_material_audit_excel``
+   导入回写 product_material（纯机械 IO，不产生审核决策）；
+7. 继续回到等待用户输入状态；只有输入 ``exit`` 才结束 Agent 进程。
 
 业务红线
 --------
@@ -56,7 +65,7 @@
 * **运行日志**：控制台 stdout/stderr 全量双写 ``logs/agent_<ts>.log``
   （调度行/工具结果/爬虫 INFO 进度/异常 traceback 均落盘，错误不留白）。
 
-运行入口
+测试入口
 --------
 ::
 
@@ -96,6 +105,10 @@ from dashscope import MultiModalConversation  # noqa: E402
 # 项目已有模块：只导入调用，禁止重写内部逻辑
 # ---------------------------------------------------------------------------
 from src.collector.main import run_crawl  # noqa: E402
+from src.material.excel_material_import import (
+    import_material_audit_excel as _run_material_import,
+)  # noqa: E402
+from src.material.generator import generate_goods_material  # noqa: E402
 from src.selector.ai_selector import ai_select_product  # noqa: E402
 from src.selector.excel_audit_import import import_audit_excel as _run_excel_import  # noqa: E402
 from src.selector.product_selector import query_product_list  # noqa: E402
@@ -218,13 +231,27 @@ SYSTEM_PROMPT = """\
    （成功更新/跳过未填写/失败条数 + 失败明细）。
    excel_file_path 由执行器自动注入 state 中保存的待审核 Excel 路径，你固定传空字符串 "" 即可。
    触发时机：仅当用户明确表示“已审核完成，执行后续操作”时调用。
-6. generate_goods_mateial / simulate_goods_publish：预留工具（返回“待后续迭代实现”）。
+6. generate_goods_mateial(product_ids)：对审核通过（audit_status='pass'）商品生成
+   P1 上架文案素材（标题候选x3/短卖点x5/详情骨架/brief），写 MySQL product_material
+   （gen_status 断点幂等：已 success 的跳过）并产出待素材审核 Excel
+   （*_pending_material_audit.xlsx）；商品 ID 列表由执行器自动注入，你固定传空数组 [] 即可。
+   素材上线前仍需人工审核（素材审核 Excel 填 pass/hold/reject，由
+   import_material_audit_excel 工具导入回写），本工具不产生任何审核决策。
+7. simulate_goods_publish：预留工具（返回“待后续迭代实现”）。
+8. import_material_audit_excel(excel_file_path)：【机械IO工具，绝不产生任何审核决策】
+   读取**人类已提前编辑并保存**的素材审核 Excel（*_pending_material_audit.xlsx，
+   audit_status/audit_operator/audit_comment 必须由人手工填写完毕）->
+   复用 material_audit_product 状态机校验 -> 逐行回写 MySQL product_material ->
+   归档 json_dump/finished_material_audit -> 返回统计
+   （成功更新/跳过未填写/失败条数 + 失败明细）。
+   excel_file_path 由执行器自动注入 state 中保存的素材待审核 Excel 路径，你固定传空字符串 "" 即可。
+   触发时机：仅当用户明确表示“已审核素材表/素材审核完成，执行后续操作”时调用。
 
 审核业务红线（最高优先级）：
 - pass/reject/hold 审核决策**只能由人类**在 Excel 中手工填写；
 - 你（大模型）禁止生成、禁止输出、禁止自主决定任何审核状态/审核人/审核备注，
   禁止编造审核结论，禁止替用户填写 Excel，禁止在回复里给出逐行审核建议；
-- import_audit_excel 工具本身也只读取人类已写好的内容做校验与同步，不会生成任何审核结果。
+- import_audit_excel / import_material_audit_excel 工具本身也只读取人类已写好的内容做校验与同步，不会生成任何审核结果。
 
 严格调度链路（不可跳步、不可乱序）：
 - 第一步：从用户指令解析出 关键词（可能多个）、页码、采集数量上限、初筛条件；
@@ -236,13 +263,19 @@ SYSTEM_PROMPT = """\
 - 第四步：调用一次 ai_select_product（candidate_list 传 []，select_condition 传初筛条件）；
 - 第五步：用简短简体中文汇总结果，列出入库表名、AI选品结果表名、Excel 路径、JSON 路径（以工具返回为准）。
 
-审核后置链路（用户输入“已审核完成，执行后续操作”时，严格按序执行）：
-- 第一步：调用一次 import_audit_excel(excel_file_path="")，并如实转述返回统计
-  （成功更新 / 跳过未填写 / 失败条数 + 失败明细）；
-- 第二步：调用一次 generate_goods_mateial(product_ids=[])，
-  商品 ID 列表由执行器自动注入审核通过（audit_status='pass'）的商品；
-- 本阶段**禁止**调用 run_crawl / query_product_list / ai_select_product
-  （state 跨轮保留，不会重复执行爬虫、不会重复 AI 选品）；
+审核后置链路（严格按序执行；先按用户话术判断审核的是哪张表，再走对应链路）：
+A. 选品审核表——用户说“已审核完成/已审核选品表，执行后续操作”时：
+ - 第一步：调用一次 import_audit_excel(excel_file_path="")，并如实转述返回统计
+   （成功更新 / 跳过未填写 / 失败条数 + 失败明细）；
+ - 第二步：调用一次 generate_goods_mateial(product_ids=[])，
+   商品 ID 列表由执行器自动注入审核通过（audit_status='pass'）的商品；
+ - 结束后提示：产出待素材审核 Excel，待人工填写素材审核后再导入。
+B. 素材审核表——用户说“已审核素材表/素材审核完成，执行后续操作”时：
+ - 调用一次 import_material_audit_excel(excel_file_path="")，并如实转述返回统计
+   （成功更新 / 跳过未填写 / 失败条数 + 失败明细）；
+ - **禁止**调用 import_audit_excel（那是选品审核表工具，不要混淆）。
+两条链路本阶段均**禁止**调用 run_crawl / query_product_list / ai_select_product
+（state 跨轮保留，不会重复执行爬虫、不会重复 AI 选品）；
 - 结束后用简短简体中文汇总导入统计。
 
 硬性约束：
@@ -384,10 +417,40 @@ TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "import_material_audit_excel",
+            "description": (
+                "【本工具不会产生任何审核决策】导入**人类已提前编辑并保存**的素材审核Excel"
+                "（*_pending_material_audit.xlsx，audit_status/audit_operator/audit_comment "
+                "必须由人手工填写完毕）：逐行读取 -> 复用 material_audit_product 状态机校验 -> "
+                "逐行回写 MySQL product_material -> 归档 json_dump/*_finished_material_audit.json "
+                "与 excel/*_finished_material_audit.xlsx -> 返回统计"
+                "（成功更新/跳过未填写/失败条数+失败明细）。"
+                "仅当用户说“已审核素材表/素材审核完成，执行后续操作”时调用。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "excel_file_path": {
+                        "type": "string",
+                        "description": (
+                            "人工填写完毕的素材审核Excel完整文件路径；"
+                            "由执行器自动注入 state['material_excel_path']，调用时固定传空字符串 \"\""
+                        ),
+                    },
+                },
+                "required": ["excel_file_path"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "generate_goods_mateial",
             "description": (
-                "【预留】对审核通过商品自动生成上架标题、卖点、详情、图片 prompt 素材；"
-                "product_ids 由执行器自动注入审核通过（audit_status='pass'）商品，调用时传 [] 即可。"
+                "对审核通过（audit_status='pass'）商品生成 P1 上架文案素材"
+                "（标题候选x3/短卖点x5/详情骨架/brief），写入 product_material 并产出"
+                "待素材审核 Excel；gen_status 断点幂等，重跑自动跳过已生成商品。"
+                "product_ids 由执行器自动注入审核通过商品，调用时传 [] 即可。"
             ),
             "parameters": {
                 "type": "object",
@@ -435,10 +498,21 @@ def manual_audit_product(**kwargs) -> dict:  # noqa: ARG001
     }
 
 
-def generate_goods_mateial(**kwargs) -> dict:  # noqa: ARG001
-    """【预留】对审核通过商品自动生成上架标题、卖点、详情、图片 prompt 素材。"""
-    print("[预留工具] generate_goods_mateial 待后续迭代实现")
-    return {"success": False, "message": "待后续迭代实现"}
+def generate_goods_mateial(**kwargs) -> dict:
+    """对审核通过商品生成 P1 上架文案素材（真实实现见 src.material.generator）。
+
+    product_ids 通常由执行器注入（模型固定传 []）；不传/传空时工具内部
+    自动查 ``product_select_result`` 中 ``audit_status='pass'`` 的全部商品。
+    gen_status 断点幂等：已 success 的商品自动跳过，重跑只补 failed/未生成。
+    """
+    raw_ids = kwargs.get("product_ids") or None
+    product_ids = None
+    if raw_ids:
+        try:
+            product_ids = [int(x) for x in raw_ids]
+        except (TypeError, ValueError):
+            return {"success": False, "error": f"非法 product_ids: {raw_ids!r}"}
+    return generate_goods_material(product_ids=product_ids)
 
 
 def simulate_goods_publish(**kwargs) -> dict:  # noqa: ARG001
@@ -565,6 +639,74 @@ def import_audit_excel(excel_file_path: str = "", state: dict | None = None) -> 
 
 
 # ---------------------------------------------------------------------------
+# import_material_audit_excel：素材审核 Excel 导入工具（机械 IO，禁止产生审核决策）
+# ---------------------------------------------------------------------------
+def import_material_audit_excel(excel_file_path: str = "", state: dict | None = None) -> dict:
+    """导入**人工填写完毕**的素材审核 Excel 并同步数据库（机械 IO）。
+
+    完整复用 ``src.material.excel_material_import.import_material_audit_excel``：
+    逐行读取 -> ``material_audit_product`` 状态机校验（流转规则/reject必填备注/
+    终态禁止改）-> 单行 UPDATE 回写 product_material -> 归档
+    ``output/json_dump/*_finished_material_audit.json`` 与
+    ``output/excel/*_finished_material_audit.xlsx`` -> 返回统计。
+
+    红线：本工具**不会产生任何审核决策**——审核状态只读取人类已保存在 Excel
+    中的内容；模型禁止生成、禁止自主决定 pass/reject/hold。
+    """
+    if state is None:
+        state = {}
+    path = str(excel_file_path or "").strip() or str(state.get("material_excel_path") or "")
+    if not path:
+        return {
+            "success": False,
+            "error": "缺少 excel_file_path（state['material_excel_path'] 为空，可能尚未执行素材生成）",
+        }
+    if not Path(path).exists():
+        return {"success": False, "error": f"素材审核 Excel 文件不存在: {path}"}
+
+    print(f"[Agent] 调用 import_material_audit_excel path={path}"
+          "（只读取人类已填写内容做校验与同步，工具不产生任何审核决策）")
+    buf = io.StringIO()
+    rc = 0
+    try:
+        with contextlib.redirect_stdout(buf):
+            rc = int(_run_material_import(path) or 0)
+    except SystemExit as exc:  # excel_material_import 缺列时 sys.exit(2)
+        rc = exc.code if isinstance(exc.code, int) else 2
+    except Exception as exc:  # noqa: BLE001 - 导入整体异常 -> 回填 error
+        _replay(buf.getvalue())
+        return {"success": False, "error": f"素材导入执行异常: {exc!r}"}
+    out = buf.getvalue()
+    _replay(out)  # 回放逐行日志/归档路径/统计汇总（控制台 + 运行日志）
+
+    stats = _parse_audit_import_stats(out)
+    if rc != 0:
+        return {
+            "success": False,
+            "excel_path": path,
+            "error": stats.get("error") or f"素材导入失败（退出码 {rc}）",
+            "success_updated": stats["success"],
+            "skipped_not_filled": stats["skipped"],
+            "failed": stats["failed"],
+            "failures": stats["failures"],
+        }
+
+    state["material_audit_pending"] = False
+    return {
+        "success": True,
+        "excel_path": path,
+        "success_updated": stats["success"],
+        "skipped_not_filled": stats["skipped"],
+        "failed": stats["failed"],
+        "failures": stats["failures"],
+        "message": (
+            f"素材导入完成：成功更新 {stats['success']} 条 / "
+            f"跳过 {stats['skipped']} 条未填写审核状态 / 失败 {stats['failed']} 条"
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
 # 小工具函数
 # ---------------------------------------------------------------------------
 def _get(obj, key, default=None):
@@ -632,18 +774,18 @@ def _latest_output(pattern: str) -> str | None:
 # ---------------------------------------------------------------------------
 def _call_model(messages: list[dict]):
     last_exc = None
-    kwargs: dict = {
-        "model": MODEL,
-        "messages": messages,
-        "tools": TOOLS,
-        "api_key": _api_key(),
-        "enable_thinking": False,
-    }
-    if WORKSPACE_ID:  # 配置了业务空间才携带 workspace 参数
-        kwargs["workspace"] = WORKSPACE_ID
     for attempt in range(1, MODEL_RETRY + 1):
         try:
-            return MultiModalConversation.call(**kwargs)
+            call_kwargs: dict = {
+                "model": MODEL,
+                "messages": messages,
+                "tools": TOOLS,
+                "api_key": _api_key(),
+                "enable_thinking": False,
+            }
+            if WORKSPACE_ID:  # 配置了业务空间才携带 workspace 参数
+                call_kwargs["workspace"] = WORKSPACE_ID
+            return MultiModalConversation.call(**call_kwargs)
         except Exception as exc:  # noqa: BLE001 - 网络/超时/服务端异常统一兜底
             last_exc = exc
             print(f"[Agent][WARN] 模型调用异常 第{attempt}/{MODEL_RETRY}次: {exc!r}")
@@ -847,14 +989,25 @@ def _execute_tool(name: str, args: dict, state: dict) -> dict:
             state=state,
         )
 
-    # ---- 预留工具空壳 ----
+    # ---- 素材/上架工具 ----
     if name == "manual_audit_product":
         return manual_audit_product(**args)
     if name == "generate_goods_mateial":
         # 审核通过的商品ID列表由执行器注入（模型固定传空数组）
         if not args.get("product_ids"):
             args = dict(args, product_ids=state.get("passed_product_ids") or [])
-        return generate_goods_mateial(**args)
+        result = generate_goods_mateial(**args)
+        # 素材待审核 Excel 路径存入 state，供 import_material_audit_excel 空路径注入
+        if isinstance(result, dict) and result.get("excel_path"):
+            state["material_excel_path"] = result["excel_path"]
+            state["material_audit_pending"] = True
+        return result
+    if name == "import_material_audit_excel":
+        # excel_file_path 模型可传 ""，执行器注入 state 中保存的素材待审核 Excel 路径
+        return import_material_audit_excel(
+            excel_file_path=args.get("excel_file_path"),
+            state=state,
+        )
     if name == "simulate_goods_publish":
         return simulate_goods_publish(**args)
 
@@ -885,6 +1038,8 @@ def _new_state() -> dict:
         "ai_results": None,
         "excel_path": None,        # 待审核 Excel（import_audit_excel 的注入源）
         "json_path": None,
+        "material_excel_path": None,  # 素材待审核 Excel（import_material_audit_excel 的注入源）
+        "material_audit_pending": False,  # True=素材生成完待人类填素材Excel；导入后置 False
         "passed_product_ids": [],  # 审核通过商品ID（generate_goods_mateial 注入源）
         "audit_pending": False,    # True=AI选品完成待人类填Excel；导入后置 False
         "terminated": False,       # count=0 提前终止开关（每轮任务复位）
@@ -1016,8 +1171,41 @@ def _print_summary(state: dict, final_text: str) -> None:
     print("=" * 64)
 
 
+def _verify_uploads(crawl_runs: list[dict]) -> None:
+    """核对原始数据（api_backup）与清洗数据（product_info）是否全部入库。"""
+    if not crawl_runs:
+        return
+    from src.common import database  # 延迟导入：仅测试入口核对用
+
+    print("\n[测试核对] 按 run_id 分表核对入库明细:")
+    try:
+        with database.connection() as conn:
+            with conn.cursor() as cur:
+                for cr in crawl_runs:
+                    rid = cr.get("run_id")
+                    kw = cr.get("keyword")
+                    cur.execute(
+                        "SELECT category, COUNT(*) FROM `api_backup` "
+                        "WHERE run_id=%s GROUP BY category ORDER BY category",
+                        (rid,),
+                    )
+                    cats = {r[0]: r[1] for r in cur.fetchall()}
+                    cur.execute(
+                        "SELECT COUNT(*), SUM(request_url IS NOT NULL), SUM(api_trace IS NOT NULL) "
+                        "FROM `product_info` WHERE run_id=%s",
+                        (rid,),
+                    )
+                    pi, traced_url, traced_api = cur.fetchone()
+                    print(f"  keyword={kw} run_id={rid}")
+                    print(f"    原始 api_backup : {sum(cats.values())} 行 分类={cats}")
+                    print(f"    清洗 product_info: {pi or 0} 行"
+                          f"（request_url 留痕 {int(traced_url or 0)}, api_trace 留痕 {int(traced_api or 0)}）")
+    except Exception as exc:  # noqa: BLE001
+        print(f"  [WARN] 核对查询失败: {exc!r}")
+
+
 # ---------------------------------------------------------------------------
-# 交互式入口：常驻会话多轮对话（exit 退出；state/messages 跨轮保留）
+# 交互式测试入口：常驻会话多轮对话（exit 退出；state/messages 跨轮保留）
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     _start_agent_log("交互式常驻会话（多轮任务调度；输入 exit 退出）")

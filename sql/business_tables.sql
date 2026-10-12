@@ -100,3 +100,46 @@ CREATE TABLE IF NOT EXISTS `product_info` (
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_general_ci
   COMMENT = 'AI选品业务表: api_backup ETL汇总(列表卡片+详情SSR+四详情接口)';
+
+-- =====================================================================
+-- P1 素材(文案)生成表 product_material
+-- 说明：
+--   * 一行一商品（UNIQUE product_id）；多版本候选文案收在 content_json 内；
+--   * gen_status = 机器生成生命周期（断点续跑依据）：
+--       pending -> generating -> success / failed；
+--       重跑幂等：跳过 success，补 failed 与未生成的；
+--   * audit_status = 人工审核（pass/hold/reject，NULL=待审），约定：
+--       pass  = 素材可用，进入上架环节；
+--       hold  = 待观望（可改可再审，非终态）；
+--       reject= 打回重新生成（作废本版素材，商品保留）；
+--   * 拒绝/通过只允许写 audit_status/audit_operator/audit_comment/audit_time
+--     四个字段（由 material_audit 状态机保证），AI 生成字段只读；
+--   * content_json 结构：{titles:[{version,title,strategy}x3], short_points:[x5],
+--       detail_outline:{pain_point,scene,specs[],trust}, sku_renames:[],
+--       brief:{scene,style,palette,selling_point}, risk_flags:[]}。
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS `product_material` (
+    `id`                BIGINT          NOT NULL AUTO_INCREMENT,
+    `product_id`        BIGINT          NOT NULL                COMMENT '商品ID(product_info.product_id)',
+    `gen_status`        VARCHAR(16)     NOT NULL DEFAULT 'pending' COMMENT '机器生成状态: pending/generating/success/failed',
+    `gen_error`         VARCHAR(500)    NULL                    COMMENT '生成失败原因(gen_status=failed)',
+    `content_json`      JSON            NULL                    COMMENT '千问生成的文案JSON(titles/short_points/detail_outline/sku_renames/brief/risk_flags)',
+    `model`             VARCHAR(64)     NULL                    COMMENT '生成所用模型',
+    `prompt_version`    VARCHAR(32)     NULL                    COMMENT '提示词版本(调优钩子, 如 PV-20261011-1)',
+    `machine_check`     VARCHAR(500)    NULL                    COMMENT '机器校验结论: pass 或 fail:原因摘要',
+    `risk_flags_json`   JSON            NULL                    COMMENT '模型自报存疑点JSON数组(供人工优先复核)',
+    `audit_status`      VARCHAR(16)     NULL                    COMMENT '人工审核状态: NULL=待审 pass/hold/reject',
+    `audit_operator`    VARCHAR(64)     NULL                    COMMENT '人工审核人',
+    `audit_comment`     TEXT            NULL                    COMMENT '人工审核备注(reject必填原因; pass可标注选用候选版)',
+    `audit_time`        DATETIME        NULL                    COMMENT '人工审核时间',
+    `created_at`        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '写入时间',
+    `updated_at`        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最近更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_product_id` (`product_id`),
+    KEY `idx_gen_status` (`gen_status`),
+    KEY `idx_audit_status` (`audit_status`)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_general_ci
+  COMMENT = 'AI素材(文案)生成表: 选品pass商品 -> 千问文案; 双状态维度(gen_status机器/audit_status人工)';

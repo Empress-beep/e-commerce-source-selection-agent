@@ -13,7 +13,7 @@
 
 - 环境：Python 3.10.9 / node / curl 可用（`check_reverse_env.py` 通过）
 - 浏览器档位：`js-reverse-mcp` 普通 Chrome 基线，**未升级 CloakBrowser**（无指纹/反爬证据，页面 200 正常返回）
-- 项目目录：`e-rpa-agent-spider-proto-17qcc/`（含 `analysis/ collector/ js_reverse_cache/ tests/`）
+- 项目目录：本仓库（含 `analysis/ collector/ js_reverse_cache/ tests/`）
 - 家族分类：**signer-gated + decode-gated**（请求体加密签名 + 响应体加密）
 - 交付意向：纯 Python 采集器；JS 仅在必要时作为本地参数还原 helper（无浏览器依赖）
 - 观察者效应：未装任何 hook/断点，网络样本为干净基线

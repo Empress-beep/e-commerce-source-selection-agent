@@ -3,8 +3,8 @@
 # 版本只写下限，保持向后兼容，不锁死高版本
 
 # ---- 采集器 ----
-requests>=2.28.0            # HTTP 请求（列表 / 详情 / 详情域接口）
-pycryptodome>=3.19.0        # AES 加解密（Crypto.Cipher.AES）
+requests>=2.31.0            # HTTP 请求（列表 / 详情 / 详情域接口）
+pycryptodome>=3.20.0        # AES 加解密（Crypto.Cipher.AES）
 cryptography>=39.0.0        # RSA 签名与信封加密（SHA1withRSA / PEM）
 
 # ---- 数据库 ----

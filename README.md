@@ -3,7 +3,7 @@
 > 个人学习 Demo，仅本地模拟运行，**不用于生产环境**。
 > 技术栈：**Python + 通义千问 + MySQL + Requests**
 
-一个把「货源采集 → 数据清洗 → 规则初筛 → AI 选品 → 人工审核 → 结果回库」串成一条链路的本地选品 Agent：用纯 Python 手写 Function-Call 调度循环，不依赖 LangChain / Dify 等任何 Agent 框架。
+一个把「货源采集 → 数据清洗 → 规则初筛 → AI 选品 → 人工审核 → AI 素材生成 → 素材审核」串成一条链路的本地选品 Agent：用纯 Python 手写 Function-Call 调度循环，不依赖 LangChain / Dify 等任何 Agent 框架。
 
 ---
 
@@ -12,14 +12,16 @@
 **完整业务链路**
 
 ```
-爬虫采集 → 清洗入库 → 数据库初筛 → 分片 AI 选品 → 人工审核闭环
+爬虫采集 → 清洗入库 → 数据库初筛 → 分片 AI 选品 → 人工审核 → AI 素材生成 → 素材审核
 ```
 
 1. **爬虫采集**：按关键词抓取商品列表页与详情页数据，接口原始响应整行落库；
 2. **清洗入库**：ETL 把原始报文汇总成干净的业务表，供后续筛选与评估；
 3. **数据库初筛**：类目 / 拿货价 / 销量 / 退货率等硬性条件在 MySQL 层参数化过滤，先淘汰不合格货源；
 4. **分片 AI 选品**：候选商品按批切片送入通义千问做多维度评估打分，自动分片防止单次上下文超限；
-5. **人工审核闭环**：AI 只产出「待审核 Excel」，业务人员手工填写审核结论后导入回写，AI 不得替人决策。
+5. **人工审核闭环**：AI 只产出「待审核 Excel」，业务人员手工填写审核结论后导入回写，AI 不得替人决策；
+6. **AI 素材生成**：对审核通过（`audit_status='pass'`）的商品自动生成上架文案素材（标题候选 / 短卖点 / 详情骨架 / brief），双状态维度（`gen_status` 机器生成 + `audit_status` 人工审核）落库；
+7. **素材审核**：素材同样只产出待审核 Excel，人工填写后再导入回写，红线与选品审核一致。
 
 **特性**
 
@@ -48,8 +50,8 @@
   - 清洗入库 `etl.py`（原始备份表 → 业务表）、登录态凭证 `session_login.py`
 - **Agent 调度层 `src/agent/function_call_agent.py`**
   - 手写 Function-Call 循环与多轮常驻会话，跨轮保留 state（候选、run_id、Excel 路径）
-  - 工具注册与编排：`run_crawl` → `query_product_list` → `ai_select_product` → `import_audit_excel`
-    （另有预留工具 `generate_goods_mateial` / `simulate_goods_publish`，见第 10 节）
+  - 工具注册与编排：`run_crawl` → `query_product_list` → `ai_select_product` → `import_audit_excel` → `generate_goods_mateial` → `import_material_audit_excel`
+    （另有预留工具 `simulate_goods_publish`，见第 10 节）
   - 调度日志双写 `logs/agent_<ts>.log`
 - **AI 选品模块 `src/selector/`**
   - `product_selector.py`：MySQL 参数化硬性条件初筛（run_id 批次隔离）
@@ -57,6 +59,10 @@
 - **人工审核模块 `src/selector/`**
   - `manual_audit.py`：审核状态机（唯一校验实现，终态锁定）
   - `excel_audit_import.py`：待审核 Excel 批量导入回写 + 归档 JSON/Excel
+- **AI 素材生成模块 `src/material/`**
+  - `generator.py`：审核通过商品 → 千问上架文案（标题候选/短卖点/详情骨架/brief），三层校验（结构/硬约束/事实核对）+ 断点续跑
+  - `material_audit.py`：素材审核状态机（与选品审核同构，终态锁定）
+  - `excel_material_import.py`：素材待审核 Excel 批量导入回写 + 归档
 - **公共支撑 `src/common/`**：`logger.py`（双模式运行日志）、`database.py`（建库建表与参数化读写）
 
 ---
@@ -76,13 +82,14 @@ from src.common import database
 database.init_schema("sql/init_table.sql")
 ```
 
-包含三张表：
+包含四张表：
 
 | 表名 | 作用 |
 |---|---|
 | `spider_db.api_backup` | 原始备份表：一次接口调用一行（原始响应 + 解密明文 + 一次性密钥） |
 | `spider_db.product_info` | 清洗后业务表：ETL 汇总结果，初筛与 AI 选品的数据源 |
 | `spider_db.product_select_result` | 选品结果表：AI 打分只增不改 + 人工审核四字段回写 |
+| `spider_db.product_material` | 素材生成表：审核通过商品 → 千问文案；`gen_status`（机器生成）+ `audit_status`（人工审核）双状态维度 |
 
 ---
 
@@ -114,12 +121,15 @@ python -m src.agent.function_call_agent
 你> 帮我采集“春季板鞋男”和“春季老爹鞋男”各 1 页，每词取前 20 个商品，
     然后初筛：拿货价不超过 50 元、销量不低于 50、退货率低于 5%，做 AI 选品
 你> 已审核完成，执行后续操作
+你> 已审核素材表，执行后续操作
 你> exit
 ```
 
 > 首轮会依次执行：采集入库 → 数据库初筛 → 分片 AI 选品 → 生成待审核 Excel；
 > 你线下用 Excel 填完 `audit_status` / `audit_operator` / `audit_comment` 保存后，
-> 输入「已审核完成，执行后续操作」完成回写归档；输入 `exit` 退出。
+> 输入「已审核完成，执行后续操作」完成回写并自动生成文案素材（产出素材待审核 Excel）；
+> 再线下填完素材审核 Excel，输入「已审核素材表，执行后续操作」完成素材回写；
+> 输入 `exit` 退出。
 
 其他常用入口：
 
@@ -153,8 +163,11 @@ Agent 对话里同样支持：说「继续采集上次中断的批次，run_id �
 | 归档 JSON | `output/json_dump/<时间戳>_finished_audit.json` | 审核回写后按处理 id 拉取的全量最新数据 |
 | 归档 Excel | `output/excel/<时间戳>_finished_audit.xlsx` | 数据库真实最新状态，业务留存 |
 | 调试 JSON | `output/<时间戳>_ai_select.json` | AI 选品原始输出与分片信息，便于追溯 |
+| 素材待审核 Excel | `output/excel/<时间戳>_pending_material_audit.xlsx` | 文案素材（标题/卖点/详情/brief）待人工审核，末尾三列留空 |
+| 素材归档 JSON/Excel | `output/json_dump/<时间戳>_finished_material_audit.json`、`output/excel/<时间戳>_finished_material_audit.xlsx` | 素材审核回写后的归档 |
+| 素材调试 JSON | `output/<时间戳>_material_gen.json` | 千问文案生成原始输出，便于追溯 |
 | 运行日志 | `logs/spider_<run_id>.log`、`logs/agent_<ts>.log` | 爬虫/选品日志与 Agent 调度日志 |
-| 数据库存储 | `spider_db.api_backup` / `product_info` / `product_select_result` | 原始备份、清洗业务数据、AI 结果与人工审核状态 |
+| 数据库存储 | `spider_db.api_backup` / `product_info` / `product_select_result` / `product_material` | 原始备份、清洗业务数据、AI 结果与人工审核状态、文案素材 |
 
 ---
 
@@ -174,14 +187,13 @@ Agent 对话里同样支持：说「继续采集上次中断的批次，run_id �
 
 ![Agent执行完整流程日志](./docs/screenshots/agent_console1.png)
 
-
 <!-- 2：待审核 Excel 截图（id + AI 字段 + 三列空审核列） -->
-**Excel 待审核报表截图**
+**Excel 选品待审核报表截图**
 
 ![待审核Excel](./docs/screenshots/audit_excel待审核.png)
 
 <!-- 3：已审核 Excel 截图（id + AI 字段 + 三列审核列【状态，审核人，理由】） -->
-**Excel 已审核报表截图**
+**Excel 选品已审核报表截图**
 
 ![审核完成Excel](./docs/screenshots/audit_excel_已审核.png)
 
@@ -194,19 +206,39 @@ Agent 对话里同样支持：说「继续采集上次中断的批次，run_id �
 
 ![审核结果导入交互日志](./docs/screenshots/agent_console2.png)
 
+<!-- 6.控制台运行截图（Agent AI 素材汇总） -->
+
+![Agent执行AI素材生成流程日志](./docs/screenshots/agent_console3.png)
+
+<!-- 7：待审核 Excel 截图（id + AI 字段 + 三列空审核列） -->
+
+**Excel 素材待审核报表截图**
+
+![待审核Excel](./docs/screenshots/material_excel待审核.png)
+
+<!-- 8：已审核 Excel 截图（id + AI 字段 + 三列空审核列） -->
+
+**Excel 素材已审核报表截图**
+
+![待审核Excel](./docs/screenshots/material_excel_已审核.png)
+
+<!-- 9：MySQL素材结果表 -->
+**数据库查询截图**
+
+![MySQL素材结果表](./docs/screenshots/mysql_material.png)
+
 ---
 
 ## 10. 待开发功能
 
-Agent 调度层已预留工具槽位（`src/agent/function_call_agent.py` 中的 `generate_goods_mateial` / `simulate_goods_publish`），当前调用只会返回「待后续迭代实现」，计划沿以下两条继续演进：
+P1 素材（文案）生成已实现（`generate_goods_mateial` + `import_material_audit_excel`，见第 4 节 `src/material/`）。Agent 调度层仍预留一个工具槽位（`src/agent/function_call_agent.py` 中的 `simulate_goods_publish`），当前调用只会返回「待后续迭代实现」：
 
 | 功能 | 预留工具 | 规划说明 |
 |---|---|---|
-| **AI 文案生成** | `generate_goods_mateial(product_ids)` | 针对人工审核通过（`audit_status='pass'`）的商品，基于商品详情自动生成上架标题、卖点、详情文案与配图 prompt 等营销素材；商品 ID 由执行器自动注入，生成结果落库/落盘，供人工修改后再进入上架环节 |
 | **商品上架** | `simulate_goods_publish(product_ids)` | 素材确认后进入商品上架流程：先实现**本地模拟发布**（记录上架参数与结果），再评估对接真实店铺后台接口 |
 
 说明：
 
-- 两个工具与主链路（采集 → 初筛 → AI 选品 → 人工审核）解耦，可独立迭代，不影响现有功能；
+- 预留工具与主链路（采集 → 初筛 → AI 选品 → 人工审核 → 素材生成 → 素材审核）解耦，可独立迭代，不影响现有功能；
 - 审核红线不变：**是否上架、是否采用生成的文案，最终由人工决定**，AI 只产出候选素材；
 - 涉及真实店铺发布的部分属于生产用途，本仓库仅保留本地模拟实现（见第 8 节注意事项）。

@@ -1,5 +1,5 @@
 -- =====================================================================
--- 电商货源 AI 选品 Agent · MySQL 初始化脚本（三张表一次建齐）
+-- 电商货源 AI 选品 Agent · MySQL 初始化脚本（四张表一次建齐）
 --
 -- 执行方式（任选其一）：
 --   1) 命令行：mysql -uroot -p < sql/init_table.sql
@@ -11,6 +11,7 @@
 --   api_backup            原始备份表：一次接口调用一行（原始响应 + 解密明文）
 --   product_info          清洗后业务表：ETL 汇总（AI 初筛 / 选品的数据源）
 --   product_select_result 选品结果表：AI 打分 + 人工审核状态（只增不改 AI 字段）
+--   product_material      素材生成表：审核通过商品 → 千问文案（gen_status + audit_status 双状态）
 --
 -- 设计约定：
 --   * run_id 任务批次隔离：每次采集生成一个 run_id，写进日志文件名
@@ -179,3 +180,40 @@ CREATE TABLE IF NOT EXISTS `product_select_result` (
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_general_ci
   COMMENT = 'AI选品结果表: AI评分只增不改 + 人工审核状态闭环(Excel导入回写)';
+
+-- =====================================================================
+-- 4) product_material：AI 素材(文案)生成表
+--    一行一商品（UNIQUE product_id）；多版本候选文案收在 content_json 内。
+--    双状态维度：
+--      gen_status  = 机器生成生命周期（断点续跑依据）：
+--                    pending -> generating -> success / failed；
+--                    重跑幂等：跳过 success，补 failed 与未生成的；
+--      audit_status = 人工审核（pass/hold/reject，NULL=待审）：
+--                    pass=可用进上架；hold=待观望；reject=打回重生成。
+--    拒绝/通过只允许写 audit_status/audit_operator/audit_comment/audit_time
+--    四个字段（由 material_audit 状态机保证），AI 生成字段只读。
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS `product_material` (
+    `id`                BIGINT          NOT NULL AUTO_INCREMENT,
+    `product_id`        BIGINT          NOT NULL                COMMENT '商品ID(product_info.product_id)',
+    `gen_status`        VARCHAR(16)     NOT NULL DEFAULT 'pending' COMMENT '机器生成状态: pending/generating/success/failed',
+    `gen_error`         VARCHAR(500)    NULL                    COMMENT '生成失败原因(gen_status=failed)',
+    `content_json`      JSON            NULL                    COMMENT '千问生成的文案JSON(titles/short_points/detail_outline/sku_renames/brief/risk_flags)',
+    `model`             VARCHAR(64)     NULL                    COMMENT '生成所用模型',
+    `prompt_version`    VARCHAR(32)     NULL                    COMMENT '提示词版本(调优钩子, 如 PV-20261011-1)',
+    `machine_check`     VARCHAR(500)    NULL                    COMMENT '机器校验结论: pass 或 fail:原因摘要',
+    `risk_flags_json`   JSON            NULL                    COMMENT '模型自报存疑点JSON数组(供人工优先复核)',
+    `audit_status`      VARCHAR(16)     NULL                    COMMENT '人工审核状态: NULL=待审 pass/hold/reject',
+    `audit_operator`    VARCHAR(64)     NULL                    COMMENT '人工审核人',
+    `audit_comment`     TEXT            NULL                    COMMENT '人工审核备注(reject必填原因; pass可标注选用候选版)',
+    `audit_time`        DATETIME        NULL                    COMMENT '人工审核时间',
+    `created_at`        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '写入时间',
+    `updated_at`        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最近更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_product_id` (`product_id`),
+    KEY `idx_gen_status` (`gen_status`),
+    KEY `idx_audit_status` (`audit_status`)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_general_ci
+  COMMENT = 'AI素材(文案)生成表: 选品pass商品 -> 千问文案; 双状态维度(gen_status机器/audit_status人工)';
