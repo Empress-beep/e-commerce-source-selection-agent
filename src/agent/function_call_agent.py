@@ -25,6 +25,9 @@
 * ``generate_goods_mateial`` <- ``from src.material.generator import generate_goods_material``
   （P1 文案素材生成：pass 商品 -> 千问文案 -> product_material 断点落库 +
   待素材审核 Excel；商品 ID 由执行器注入）
+* ``generate_goods_image`` <- ``from src.material.image_generator import generate_goods_image``
+  （P2 图片素材生成：素材 pass 商品 -> 千问生图双槽位 -> product_image 断点落库 +
+  待图片审核 Excel；商品 ID 由执行器注入；免费额度耗尽即停，绝不自动切付费）
 * ``import_material_audit_excel`` <- ``from src.material.excel_material_import import import_material_audit_excel``
   （Agent 内工具封装：读取**人类已填写完毕**的素材审核 Excel -> 复用
   ``src/material/material_audit.py`` 状态机校验 -> 批量回写 MySQL product_material
@@ -48,7 +51,13 @@
 6. 产出待素材审核 Excel 后**继续等待**：业务人员填写素材审核表并保存，
    用户输入“已审核素材表，执行后续操作” -> 调用 ``import_material_audit_excel``
    导入回写 product_material（纯机械 IO，不产生审核决策）；
-7. 继续回到等待用户输入状态；只有输入 ``exit`` 才结束 Agent 进程。
+7. 素材 pass 商品可继续调用 ``generate_goods_image``（P2 图片生成：双槽位生图 +
+   product_image 断点落库 + 待图片审核 Excel；免费额度耗尽即停）；
+8. 继续回到等待用户输入状态；只有输入 ``exit`` 才结束 Agent 进程；
+9. **断点持久化**：每轮任务结束把 ``messages`` + ``state`` 原子落盘
+   ``output/agent_session.json``；进程重启（exit / Ctrl+C / 异常退出后再启动）
+   自动恢复对话上下文与执行器状态并打印所处环节，从上次环节继续；
+   输入 ``reset`` 清空会话与断点文件，重新开始。
 
 业务红线
 --------
@@ -109,6 +118,7 @@ from src.material.excel_material_import import (
     import_material_audit_excel as _run_material_import,
 )  # noqa: E402
 from src.material.generator import generate_goods_material  # noqa: E402
+from src.material.image_generator import generate_goods_image  # noqa: E402
 from src.selector.ai_selector import ai_select_product  # noqa: E402
 from src.selector.excel_audit_import import import_audit_excel as _run_excel_import  # noqa: E402
 from src.selector.product_selector import query_product_list  # noqa: E402
@@ -117,10 +127,8 @@ from src.settings import LOG_DIR, OUTPUT_DIR  # noqa: E402 路径常量统一由
 # ---------------------------------------------------------------------------
 # 模型与调度配置
 # ---------------------------------------------------------------------------
-MODEL = "qwen3.7-flash-2026-07-15"
-# 新版百炼业务空间 ID：只从环境变量读取（config/.env），禁止硬编码；
-# 留空 = 使用账号默认业务空间（不携带 workspace 参数）
-WORKSPACE_ID = os.environ.get("DASHSCOPE_WORKSPACE_ID", "").strip()
+MODEL = os.environ.get("AGENT_MODEL", "qwen3.7-flash-2026-07-15")
+WORKSPACE_ID = os.environ.get("DASHSCOPE_WORKSPACE_ID", "").strip()  # 留空不携带
 MAX_STEPS = 16            # 最大调度轮次（每轮可含多个 tool_calls）
 MODEL_RETRY = 3           # 模型网络/服务异常重试次数
 KEYWORD_DELAY = 180.0     # 关键词间风控间隔（默认 3 分钟）
@@ -178,7 +186,7 @@ def _start_agent_log(instruction: str, log_path: Path | str | None = None) -> Pa
     _AGENT_LOG.update({"fh": fh, "saved": saved, "path": path})
     print("=" * 64)
     print(f"Function-Call Agent 运行日志 | 启动 {time.strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"模型={MODEL} | workspace={WORKSPACE_ID}")
+    print(f"模型={MODEL} | workspace={WORKSPACE_ID or '账号默认'}")
     print(f"指令: {instruction}")
     print(f"日志文件: {path}")
     print("=" * 64)
@@ -246,6 +254,11 @@ SYSTEM_PROMPT = """\
    （成功更新/跳过未填写/失败条数 + 失败明细）。
    excel_file_path 由执行器自动注入 state 中保存的素材待审核 Excel 路径，你固定传空字符串 "" 即可。
    触发时机：仅当用户明确表示“已审核素材表/素材审核完成，执行后续操作”时调用。
+9. generate_goods_image(product_ids)：对**素材文案审核通过**（product_material.audit_status='pass'）
+   商品生成 P2 上架图片素材（每商品 2 张：scene 场景图 + selling 卖点图），写 MySQL product_image
+   （gen_status 断点幂等：已 success 的槽位自动跳过）并产出待图片审核 Excel
+   （*_pending_image_audit.xlsx）；商品 ID 列表由执行器自动注入，你固定传空数组 [] 即可。
+   免费额度耗尽即停（quota_exhausted=true），绝不自动切付费；人工审核流程同素材表。
 
 审核业务红线（最高优先级）：
 - pass/reject/hold 审核决策**只能由人类**在 Excel 中手工填写；
@@ -271,9 +284,12 @@ A. 选品审核表——用户说“已审核完成/已审核选品表，执行�
    商品 ID 列表由执行器自动注入审核通过（audit_status='pass'）的商品；
  - 结束后提示：产出待素材审核 Excel，待人工填写素材审核后再导入。
 B. 素材审核表——用户说“已审核素材表/素材审核完成，执行后续操作”时：
- - 调用一次 import_material_audit_excel(excel_file_path="")，并如实转述返回统计
+  - 调用一次 import_material_audit_excel(excel_file_path="")，并如实转述返回统计
    （成功更新 / 跳过未填写 / 失败条数 + 失败明细）；
- - **禁止**调用 import_audit_excel（那是选品审核表工具，不要混淆）。
+  - **禁止**调用 import_audit_excel（那是选品审核表工具，不要混淆）；
+  - 素材导入成功后，若用户明确要求生成图片（或链路中图片尚未生成），可调用一次
+    generate_goods_image(product_ids=[])（商品ID由执行器注入素材pass商品），
+    产出待图片审核 Excel（*_pending_image_audit.xlsx），提示人工填写图片审核表。
 两条链路本阶段均**禁止**调用 run_crawl / query_product_list / ai_select_product
 （state 跨轮保留，不会重复执行爬虫、不会重复 AI 选品）；
 - 结束后用简短简体中文汇总导入统计。
@@ -464,6 +480,29 @@ TOOLS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "generate_goods_image",
+            "description": (
+                "对素材文案审核通过（product_material.audit_status='pass'）商品生成 P2 图片素材"
+                "（每商品 2 张：scene 场景图 + selling 卖点图），写入 product_image 并产出"
+                "待图片审核 Excel；gen_status 断点幂等，免费额度耗尽即停（不自动切付费）。"
+                "product_ids 由执行器自动注入素材通过商品，调用时传 [] 即可。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "product_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "待生成图片的商品ID列表",
+                    },
+                },
+                "required": ["product_ids"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "simulate_goods_publish",
             "description": "【预留】素材审核完成后模拟商品上架流程。",
             "parameters": {
@@ -513,6 +552,24 @@ def generate_goods_mateial(**kwargs) -> dict:
         except (TypeError, ValueError):
             return {"success": False, "error": f"非法 product_ids: {raw_ids!r}"}
     return generate_goods_material(product_ids=product_ids)
+
+
+def generate_goods_image_tool(**kwargs) -> dict:
+    """对素材 pass 商品生成 P2 图片素材（真实实现见 src.material.image_generator）。
+
+    product_ids 通常由执行器注入（模型固定传 []）；不传/传空时工具内部
+    自动查 ``product_material`` 中 ``audit_status='pass'`` 的全部商品。
+    gen_status 断点幂等（按 product_id+slot）：已 success 的槽位自动跳过；
+    免费额度耗尽即停（quota_exhausted=True）。
+    """
+    raw_ids = kwargs.get("product_ids") or None
+    product_ids = None
+    if raw_ids:
+        try:
+            product_ids = [int(x) for x in raw_ids]
+        except (TypeError, ValueError):
+            return {"success": False, "error": f"非法 product_ids: {raw_ids!r}"}
+    return generate_goods_image(product_ids=product_ids)
 
 
 def simulate_goods_publish(**kwargs) -> dict:  # noqa: ARG001
@@ -692,6 +749,22 @@ def import_material_audit_excel(excel_file_path: str = "", state: dict | None = 
         }
 
     state["material_audit_pending"] = False
+
+    # ---- 素材 pass 商品 ID（机械查询，仅为 generate_goods_image 注入，不做决策） ----
+    material_passed: list = []
+    try:
+        from src.common import database  # 延迟导入：仅本工具回查用
+        rows = database.fetch_all(
+            "product_material",
+            where="audit_status=%s ORDER BY id",
+            params=["pass"],
+            cols="product_id",
+        )
+        material_passed = [r.get("product_id") for r in rows if r.get("product_id")]
+    except Exception as exc:  # noqa: BLE001
+        print(f"[Agent][WARN] 查询素材pass商品ID失败: {exc!r}")
+    state["material_passed_ids"] = material_passed
+
     return {
         "success": True,
         "excel_path": path,
@@ -699,9 +772,11 @@ def import_material_audit_excel(excel_file_path: str = "", state: dict | None = 
         "skipped_not_filled": stats["skipped"],
         "failed": stats["failed"],
         "failures": stats["failures"],
+        "material_passed_ids": material_passed,
         "message": (
             f"素材导入完成：成功更新 {stats['success']} 条 / "
-            f"跳过 {stats['skipped']} 条未填写审核状态 / 失败 {stats['failed']} 条"
+            f"跳过 {stats['skipped']} 条未填写审核状态 / 失败 {stats['failed']} 条；"
+            f"素材通过（audit_status='pass'）商品 {len(material_passed)} 个"
         ),
     }
 
@@ -776,7 +851,7 @@ def _call_model(messages: list[dict]):
     last_exc = None
     for attempt in range(1, MODEL_RETRY + 1):
         try:
-            call_kwargs: dict = {
+            call_kwargs = {
                 "model": MODEL,
                 "messages": messages,
                 "tools": TOOLS,
@@ -1008,6 +1083,16 @@ def _execute_tool(name: str, args: dict, state: dict) -> dict:
             excel_file_path=args.get("excel_file_path"),
             state=state,
         )
+    if name == "generate_goods_image":
+        # 素材 pass 商品ID列表由执行器注入（模型固定传空数组）
+        if not args.get("product_ids"):
+            args = dict(args, product_ids=state.get("material_passed_ids") or [])
+        result = generate_goods_image_tool(**args)
+        # 图片待审核 Excel 路径存入 state（预留后续图片审核导入工具扩展）
+        if isinstance(result, dict) and result.get("excel_path"):
+            state["image_excel_path"] = result["excel_path"]
+            state["image_audit_pending"] = True
+        return result
     if name == "simulate_goods_publish":
         return simulate_goods_publish(**args)
 
@@ -1040,11 +1125,91 @@ def _new_state() -> dict:
         "json_path": None,
         "material_excel_path": None,  # 素材待审核 Excel（import_material_audit_excel 的注入源）
         "material_audit_pending": False,  # True=素材生成完待人类填素材Excel；导入后置 False
+        "material_passed_ids": [],  # 素材 pass 商品ID（generate_goods_image 注入源）
+        "image_excel_path": None,  # 图片待审核 Excel（预留图片审核导入扩展）
+        "image_audit_pending": False,  # True=图片生成完待人类填图片Excel
         "passed_product_ids": [],  # 审核通过商品ID（generate_goods_mateial 注入源）
         "audit_pending": False,    # True=AI选品完成待人类填Excel；导入后置 False
         "terminated": False,       # count=0 提前终止开关（每轮任务复位）
         "terminate_reason": "",
     }
+
+
+# ---------------------------------------------------------------------------
+# 会话断点持久化：messages + state 落盘 / 恢复（进程重启后从上次环节继续）
+# ---------------------------------------------------------------------------
+_SESSION_PATH = _ROOT / "output" / "agent_session.json"
+
+
+def _save_session(messages: list[dict], state: dict) -> None:
+    """原子落盘会话（写 .tmp -> replace），崩溃/断电不产生半截文件。"""
+    try:
+        _SESSION_PATH.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "saved_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "messages": messages,
+            "state": state,
+        }
+        tmp = _SESSION_PATH.with_suffix(".json.tmp")
+        tmp.write_text(
+            json.dumps(payload, ensure_ascii=False, default=str),
+            encoding="utf-8",
+        )
+        tmp.replace(_SESSION_PATH)
+    except Exception as exc:  # noqa: BLE001 - 持久化失败不打断业务
+        print(f"[Agent][WARN] 会话保存失败: {exc!r}")
+
+
+def _load_session() -> tuple[list[dict], dict] | tuple[None, None]:
+    """读取上次会话断点；文件缺失/损坏返回 ``(None, None)`` 由调用方新建。"""
+    if not _SESSION_PATH.exists():
+        return None, None
+    try:
+        payload = json.loads(_SESSION_PATH.read_text(encoding="utf-8"))
+        messages = payload.get("messages") or []
+        saved_state = payload.get("state") or {}
+    except Exception as exc:  # noqa: BLE001 - 损坏文件 -> 全新开会话
+        print(f"[Agent][WARN] 会话断点文件损坏，忽略并新建: {exc!r}")
+        return None, None
+    # 以 _new_state() 为底合并：历史文件缺的新键自动补默认值
+    state = _new_state()
+    for key, value in saved_state.items():
+        if key in state:
+            state[key] = value
+    return messages, state
+
+
+def _print_resume(messages: list[dict], state: dict) -> None:
+    """恢复会话后打印断点位置（进度阶段由 state 标志推导）。"""
+    print(f"[Agent] 已恢复上次会话：累计消息 {len(messages)} 条，"
+          f"断点文件 { _SESSION_PATH.name }（saved_at={_load_saved_at()}）")
+    if state.get("image_audit_pending") and state.get("image_excel_path"):
+        stage = f"待人工填写图片审核 Excel：{state['image_excel_path']}"
+    elif state.get("material_audit_pending") and state.get("material_excel_path"):
+        stage = f"待人工填写素材审核 Excel：{state['material_excel_path']}"
+    elif state.get("audit_pending") and state.get("excel_path"):
+        stage = f"待人工填写选品审核 Excel：{state['excel_path']}"
+    elif state.get("material_passed_ids"):
+        stage = (f"素材审核已导入（{len(state['material_passed_ids'])} 个 pass 商品），"
+                 "可继续执行生图环节")
+    elif state.get("passed_product_ids"):
+        stage = (f"选品审核已导入（{len(state['passed_product_ids'])} 个 pass 商品），"
+                 "可继续执行素材生成环节")
+    elif state.get("ai_results") is not None:
+        stage = "AI 选品已完成（等待审核导入）"
+    elif state.get("crawl_runs"):
+        stage = f"已完成 {len(state['crawl_runs'])} 次采集（等待初筛/选品）"
+    else:
+        stage = "无可恢复进度（全新开局）"
+    print(f"[Agent] 断点环节: {stage}")
+
+
+def _load_saved_at() -> str:
+    try:
+        payload = json.loads(_SESSION_PATH.read_text(encoding="utf-8"))
+        return str(payload.get("saved_at") or "未知")
+    except Exception:  # noqa: BLE001
+        return "未知"
 
 
 # ---------------------------------------------------------------------------
@@ -1067,6 +1232,7 @@ def run_agent(instruction: str, messages: list[dict], state: dict) -> dict:
     # 采集批次每轮任务重新累计（本轮未采集时 query 兜底注入最近一次 run_id）
     state["run_ids"] = []
     final_text = ""
+    _save_session(messages, state)  # 断点：指令入队即落盘
 
     for step in range(1, MAX_STEPS + 1):
         print(f"\n[Agent] ---- 轮次 {step}/{MAX_STEPS}: 请求模型 {MODEL} ----")
@@ -1076,6 +1242,7 @@ def run_agent(instruction: str, messages: list[dict], state: dict) -> dict:
             final_text = f"任务中止：{exc}"
             print(f"[Agent][ERROR] {final_text}")
             messages.append({"role": "assistant", "content": [{"text": final_text}]})
+            _save_session(messages, state)
             return {"final_text": final_text, "state": state}
 
         try:
@@ -1084,6 +1251,7 @@ def run_agent(instruction: str, messages: list[dict], state: dict) -> dict:
             final_text = f"任务中止：模型返回解析失败（{exc}）"
             print(f"[Agent][ERROR] {final_text}")
             messages.append({"role": "assistant", "content": [{"text": final_text}]})
+            _save_session(messages, state)
             return {"final_text": final_text, "state": state}
 
         if text:
@@ -1142,11 +1310,13 @@ def run_agent(instruction: str, messages: list[dict], state: dict) -> dict:
             print(f"[Agent][终止] {final_text}")
             messages.append({"role": "assistant", "content": [{"text": final_text}]})
             break
+        _save_session(messages, state)  # 断点：每个调度轮次结束即落盘
     else:
         final_text = f"已达最大调度轮次 {MAX_STEPS}，任务未收敛。"
         print(f"[Agent][WARN] {final_text}")
         messages.append({"role": "assistant", "content": [{"text": final_text}]})
 
+    _save_session(messages, state)  # 断点：本轮任务收尾落盘
     _print_summary(state, final_text)
     return {"final_text": final_text, "state": state}
 
@@ -1208,10 +1378,16 @@ def _verify_uploads(crawl_runs: list[dict]) -> None:
 # 交互式测试入口：常驻会话多轮对话（exit 退出；state/messages 跨轮保留）
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    _start_agent_log("交互式常驻会话（多轮任务调度；输入 exit 退出）")
+    _start_agent_log("交互式常驻会话（多轮任务调度；输入 exit 退出；reset 清空断点）")
     t0 = time.time()
-    messages: list[dict] = []   # 跨轮保留的对话上下文（首轮自动补 system）
-    state: dict = _new_state()  # 跨轮保留的执行器状态
+    loaded = _load_session()
+    if loaded[0] is not None:
+        messages, state = loaded
+        _print_resume(messages, state)
+    else:
+        messages: list[dict] = []   # 跨轮保留的对话上下文（首轮自动补 system）
+        state: dict = _new_state()  # 跨轮保留的执行器状态
+        print("[Agent] 未找到会话断点，全新会话开始。")
     exit_text = ""
     try:
         while True:
@@ -1225,6 +1401,13 @@ if __name__ == "__main__":
             if user_input.lower() in {"exit", "quit"}:
                 exit_text = "exit"
                 break
+            if user_input.lower() == "reset":
+                with contextlib.suppress(OSError):
+                    _SESSION_PATH.unlink()
+                messages = []
+                state = _new_state()
+                print("[Agent] 已清空会话断点（agent_session.json），重新开始。")
+                continue
 
             out = run_agent(user_input, messages, state)
             state = out["state"]

@@ -143,3 +143,54 @@ CREATE TABLE IF NOT EXISTS `product_material` (
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_general_ci
   COMMENT = 'AI素材(文案)生成表: 选品pass商品 -> 千问文案; 双状态维度(gen_status机器/audit_status人工)';
+
+-- =====================================================================
+-- P2 素材(图片)生成表 product_image
+-- 说明：
+--   * 一行一图（UNIQUE product_id + slot）；每商品固定 2 槽位：
+--       scene  = 场景氛围图（i2i 参考 product_info.cover_photo，主图缺失降级 t2i）；
+--       selling= 卖点特写图（同上）；
+--   * gen_status = 机器生成生命周期（断点续跑依据）：
+--       pending -> generating -> success / failed；
+--       重跑幂等：跳过 success 槽位，补 failed 与未生成的；
+--   * audit_status = 人工审核（pass/hold/reject，NULL=待审），约定：
+--       pass  = 图片可用，进入上架环节；
+--       hold  = 待观望（可改可再审，非终态）；
+--       reject= 打回重新生成（作废本版图片，商品保留）；
+--   * 拒绝/通过只允许写 audit_status/audit_operator/audit_comment/audit_time
+--     四个字段（由 image_audit 状态机保证），AI 生成字段只读；
+--   * source = i2i（图生图，有参考图）/ t2i（文生图，主图缺失降级）；
+--   * qc_result = AI 看图质检结论（pass/fail），失败原因存 qc_reasons_json；
+--   * 免费额度耗尽：quota_exhausted 停批，剩余槽位 gen_status='failed'
+--     （gen_error='免费额度耗尽'），绝不自动切付费。
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS `product_image` (
+    `id`                BIGINT          NOT NULL AUTO_INCREMENT,
+    `product_id`        BIGINT          NOT NULL                COMMENT '商品ID(product_info.product_id)',
+    `slot`              VARCHAR(16)     NOT NULL                COMMENT '图片槽位: scene=场景图 / selling=卖点图（有主图时均走i2i）',
+    `gen_status`        VARCHAR(16)     NOT NULL DEFAULT 'pending' COMMENT '机器生成状态: pending/generating/success/failed',
+    `gen_error`         VARCHAR(500)    NULL                    COMMENT '生成失败原因(gen_status=failed; 含免费额度耗尽)',
+    `prompt`            TEXT            NULL                    COMMENT '实际使用的生图prompt(含事实约束与负向词)',
+    `source`            VARCHAR(8)      NULL                    COMMENT '生成方式: t2i=文生图 / i2i=图生图',
+    `image_path`        VARCHAR(512)    NULL                    COMMENT '本地图片相对路径(output/images/<product_id>/...)',
+    `origin_url`        VARCHAR(1024)   NULL                    COMMENT '模型返回的原始图片URL(下载前)',
+    `model`             VARCHAR(64)     NULL                    COMMENT '实际使用的生图模型',
+    `prompt_version`    VARCHAR(32)     NULL                    COMMENT '提示词版本(调优钩子, 如 PV-20261015-1)',
+    `machine_check`     VARCHAR(500)    NULL                    COMMENT '技术校验结论: pass 或 fail:原因摘要',
+    `qc_result`         VARCHAR(16)     NULL                    COMMENT 'AI看图质检结论: pass / fail',
+    `qc_reasons_json`   JSON            NULL                    COMMENT 'AI质检失败原因JSON数组(带原因重试依据)',
+    `audit_status`      VARCHAR(16)     NULL                    COMMENT '人工审核状态: NULL=待审 pass/hold/reject',
+    `audit_operator`    VARCHAR(64)     NULL                    COMMENT '人工审核人',
+    `audit_comment`     TEXT            NULL                    COMMENT '人工审核备注(reject必填原因)',
+    `audit_time`        DATETIME        NULL                    COMMENT '人工审核时间',
+    `created_at`        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '写入时间',
+    `updated_at`        DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最近更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_product_slot` (`product_id`, `slot`),
+    KEY `idx_gen_status` (`gen_status`),
+    KEY `idx_audit_status` (`audit_status`)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_general_ci
+  COMMENT = 'AI素材(图片)生成表: 素材pass商品 -> 千问生图; 双状态机同构product_material';

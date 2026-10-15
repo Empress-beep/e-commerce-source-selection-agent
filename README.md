@@ -3,7 +3,7 @@
 > 个人学习 Demo，仅本地模拟运行，**不用于生产环境**。
 > 技术栈：**Python + 通义千问 + MySQL + Requests**
 
-一个把「货源采集 → 数据清洗 → 规则初筛 → AI 选品 → 人工审核 → AI 素材生成 → 素材审核」串成一条链路的本地选品 Agent：用纯 Python 手写 Function-Call 调度循环，不依赖 LangChain / Dify 等任何 Agent 框架。
+一个把「货源采集 → 数据清洗 → 规则初筛 → AI 选品 → 人工审核 → AI 素材生成 → 素材审核」串成一条链路的本地选品 Agent：用纯 Python 手写 Function-Call 调度循环，不依赖 LangChain / Dify 等任何 Agent 框架；配合**交互式常驻会话**与**断点持久化**，实现分段任务执行（采集选品 → 人工审核 → 导入回写）。
 
 ---
 
@@ -21,7 +21,8 @@
 4. **分片 AI 选品**：候选商品按批切片送入通义千问做多维度评估打分，自动分片防止单次上下文超限；
 5. **人工审核闭环**：AI 只产出「待审核 Excel」，业务人员手工填写审核结论后导入回写，AI 不得替人决策；
 6. **AI 素材生成**：对审核通过（`audit_status='pass'`）的商品自动生成上架文案素材（标题候选 / 短卖点 / 详情骨架 / brief），双状态维度（`gen_status` 机器生成 + `audit_status` 人工审核）落库；
-7. **素材审核**：素材同样只产出待审核 Excel，人工填写后再导入回写，红线与选品审核一致。
+7. **图片素材生成**：素材审核通过后，千问生图（每商品 2 张：场景图 + 卖点图，统一 `qwen-image-3.0` 模型），四道关卡（技术校验 → AI 看图质检 → 人工审核 Excel）落库 `product_image`；
+8. **素材审核**：文案与图片素材同样只产出待审核 Excel，人工填写后再导入回写，红线与选品审核一致。
 
 **特性**
 
@@ -29,7 +30,9 @@
 - **双模式运行日志**：`quiet` 模式（Agent 生产路径，只记业务关键点）与 `debug` 模式（本地调试，密钥/报文/明文只落文件不进控制台）；
 - **AI 仅做评估，人工兜底审核**：模型只输出打分与推荐等级，pass/reject/hold 审核结论必须由人在 Excel 中填写，状态机校验 + 终态锁定；
 - **输出 MySQL + JSON + Excel**：结构化结果进数据库，JSON 用于调试追溯，Excel 用于人工审核与业务归档；
-- **纯 Python 工具调用链路**：手写「模型 → function_call 解析 → 工具执行 → 结果回填 → 多轮调度」循环，**不依赖 LangChain / Dify**。
+- **纯 Python 工具调用链路**：手写「模型 → function_call 解析 → 工具执行 → 结果回填 → 多轮调度」循环，**不依赖 LangChain / Dify**；
+- **交互式常驻会话 + 断点持久化**：AI 选品完成后不退出、保留上下文等待人工审核指令；每轮任务结束把会话状态原子落盘 `output/agent_session.json`，进程重启自动恢复并打印断点环节；
+- **图片生成额度熔断**：免费生图额度耗尽即停（`quota_exhausted=true`），不自动切付费模型。
 
 ---
 
@@ -50,9 +53,9 @@
   - 清洗入库 `etl.py`（原始备份表 → 业务表）、登录态凭证 `session_login.py`
 - **Agent 调度层 `src/agent/function_call_agent.py`**
   - 手写 Function-Call 循环与多轮常驻会话，跨轮保留 state（候选、run_id、Excel 路径）
-  - 工具注册与编排：`run_crawl` → `query_product_list` → `ai_select_product` → `import_audit_excel` → `generate_goods_mateial` → `import_material_audit_excel`
+  - 工具注册与编排：`run_crawl` → `query_product_list` → `ai_select_product` → `import_audit_excel` → `generate_goods_mateial` → `import_material_audit_excel` → `generate_goods_image`
     （另有预留工具 `simulate_goods_publish`，见第 10 节）
-  - 调度日志双写 `logs/agent_<ts>.log`
+  - 调度日志双写 `logs/agent_<ts>.log`；会话状态断点持久化 `output/agent_session.json`
 - **AI 选品模块 `src/selector/`**
   - `product_selector.py`：MySQL 参数化硬性条件初筛（run_id 批次隔离）
   - `ai_selector.py`：通义千问分片评估、结构校验与防编造、结果持久化
@@ -61,6 +64,7 @@
   - `excel_audit_import.py`：待审核 Excel 批量导入回写 + 归档 JSON/Excel
 - **AI 素材生成模块 `src/material/`**
   - `generator.py`：审核通过商品 → 千问上架文案（标题候选/短卖点/详情骨架/brief），三层校验（结构/硬约束/事实核对）+ 断点续跑
+  - `image_generator.py`：素材审核通过商品 → 千问生图（统一 `qwen-image-3.0`，每商品 scene+selling 双槽位），四道关卡（技术校验/API 审核+watermark=false/AI 看图质检/人工 Excel）+ 断点续跑；免费额度耗尽即停
   - `material_audit.py`：素材审核状态机（与选品审核同构，终态锁定）
   - `excel_material_import.py`：素材待审核 Excel 批量导入回写 + 归档
 - **公共支撑 `src/common/`**：`logger.py`（双模式运行日志）、`database.py`（建库建表与参数化读写）
@@ -82,7 +86,7 @@ from src.common import database
 database.init_schema("sql/init_table.sql")
 ```
 
-包含四张表：
+包含五张表：
 
 | 表名 | 作用 |
 |---|---|
@@ -90,6 +94,7 @@ database.init_schema("sql/init_table.sql")
 | `spider_db.product_info` | 清洗后业务表：ETL 汇总结果，初筛与 AI 选品的数据源 |
 | `spider_db.product_select_result` | 选品结果表：AI 打分只增不改 + 人工审核四字段回写 |
 | `spider_db.product_material` | 素材生成表：审核通过商品 → 千问文案；`gen_status`（机器生成）+ `audit_status`（人工审核）双状态维度 |
+| `spider_db.product_image` | 图片生成表：素材审核通过商品 → 千问生图（scene+selling 双槽位）；`gen_status` + `audit_status` 双状态机同构 product_material |
 
 ---
 
@@ -166,8 +171,12 @@ Agent 对话里同样支持：说「继续采集上次中断的批次，run_id �
 | 素材待审核 Excel | `output/excel/<时间戳>_pending_material_audit.xlsx` | 文案素材（标题/卖点/详情/brief）待人工审核，末尾三列留空 |
 | 素材归档 JSON/Excel | `output/json_dump/<时间戳>_finished_material_audit.json`、`output/excel/<时间戳>_finished_material_audit.xlsx` | 素材审核回写后的归档 |
 | 素材调试 JSON | `output/<时间戳>_material_gen.json` | 千问文案生成原始输出，便于追溯 |
+| 图片待审核 Excel | `output/excel/<时间戳>_pending_image_audit.xlsx` | 图片素材（scene+selling 双槽位）待人工审核，含图片超链接 |
+| 图片调试 JSON | `output/<时间戳>_image_gen.json` | 千问生图原始输出、attempts 明细与额度去向，便于追溯 |
+| 生成图片 | `output/images/<product_id>/<slot>_<ts>.png` | 本地图盘（质检失败移入 `rejected/` 子目录保留回溯） |
+| Agent 会话断点 | `output/agent_session.json` | 常驻会话 messages+state 原子落盘，重启自动恢复断点环节 |
 | 运行日志 | `logs/spider_<run_id>.log`、`logs/agent_<ts>.log` | 爬虫/选品日志与 Agent 调度日志 |
-| 数据库存储 | `spider_db.api_backup` / `product_info` / `product_select_result` / `product_material` | 原始备份、清洗业务数据、AI 结果与人工审核状态、文案素材 |
+| 数据库存储 | `spider_db.api_backup` / `product_info` / `product_select_result` / `product_material` / `product_image` | 原始备份、清洗业务数据、AI 结果与人工审核状态、文案素材、图片素材 |
 
 ---
 
@@ -231,7 +240,9 @@ Agent 对话里同样支持：说「继续采集上次中断的批次，run_id �
 
 ## 10. 待开发功能
 
-P1 素材（文案）生成已实现（`generate_goods_mateial` + `import_material_audit_excel`，见第 4 节 `src/material/`）。Agent 调度层仍预留一个工具槽位（`src/agent/function_call_agent.py` 中的 `simulate_goods_publish`），当前调用只会返回「待后续迭代实现」：
+P1 素材（文案）生成已实现（`generate_goods_mateial` + `import_material_audit_excel`）；
+P2 图片素材生成已实现（`generate_goods_image`，统一 `qwen-image-3.0` 模型 + 四道关卡 + 断点续跑）。
+Agent 调度层仍预留一个工具槽位（`src/agent/function_call_agent.py` 中的 `simulate_goods_publish`），当前调用只会返回「待后续迭代实现」：
 
 | 功能 | 预留工具 | 规划说明 |
 |---|---|---|

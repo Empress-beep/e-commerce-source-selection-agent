@@ -13,6 +13,10 @@ pymysql>=1.0.2              # MySQL 驱动（api_backup / product_info / product
 # ---- AI 选品与 Agent ----
 dashscope>=1.20.0           # 通义千问 DashScope SDK（MultiModalConversation Function Call）
 
+# ---- 图片下载与校验（P2 生图落盘 + PIL 技术校验）----
+Pillow>=10.0.0              # 图片解码/尺寸校验（src/material/image_generator.py）
+requests>=2.31.0            # 生图返回 URL 下载
+
 # ---- 审核报表 ----
 openpyxl>=3.0.10            # 待审核 Excel 生成与导入（pending/finished audit）
 
